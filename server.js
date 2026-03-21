@@ -327,6 +327,12 @@ io.on("connection", (socket) => {
     player.rebirthCount = Math.max(0, Math.floor(Number(payload.rebirthCount) || 0));
     player.position = sanitizePosition(payload.position);
     socket.broadcast.emit("player:joined", serializePlayer(player));
+    socket.broadcast.emit("player:moved", {
+      socketId: socket.id,
+      username: player.username,
+      rebirthCount: player.rebirthCount,
+      position: player.position,
+    });
     emitPlayerList();
   });
 
@@ -343,6 +349,8 @@ io.on("connection", (socket) => {
     player.position = sanitizePosition(payload);
     socket.broadcast.emit("player:moved", {
       socketId: socket.id,
+      username: player.username,
+      rebirthCount: player.rebirthCount,
       position: player.position,
     });
   });

@@ -661,7 +661,7 @@ const SOCKET_URL = (() => {
   }
   return "";
 })();
-const BUILD_ID = "20260321-357";
+const BUILD_ID = "20260321-358";
 
 const clock = new THREE.Clock();
 const velocity = new THREE.Vector3();
@@ -786,6 +786,7 @@ let dayNightCycleTime = 0;
 let multiplayerSocket = null;
 let multiplayerConnected = false;
 let multiplayerStreetAuthority = false;
+let multiplayerSelfSocketId = "";
 let multiplayerServerTimeOffsetMs = 0;
 let multiplayerMovementSendAccumulator = 0;
 let multiplayerPendingPurchaseCharacterId = "";
@@ -6055,7 +6056,7 @@ function isSocketIoReady() {
 }
 
 function isMultiplayerStreetAuthorityEnabled() {
-  return multiplayerStreetAuthority && multiplayerConnected;
+  return multiplayerConnected && (multiplayerStreetAuthority || Boolean(multiplayerSocket));
 }
 
 function syncMultiplayerServerTime(serverTimeMs) {
@@ -6088,6 +6089,7 @@ function createRemotePlayerAvatar(username) {
   avatar.userData.isRemotePlayer = true;
   avatar.userData.nameTagSprite && (avatar.userData.nameTagSprite.renderOrder = 7);
   applyNameTagToAvatar(avatar, username, 1.15, 6.2);
+  avatar.visible = true;
   return avatar;
 }
 
@@ -6111,7 +6113,10 @@ function ensureRemotePlayerState(playerData) {
     return null;
   }
   const socketId = typeof playerData.socketId === "string" ? playerData.socketId : "";
-  if (!socketId || (multiplayerSocket && socketId === multiplayerSocket.id)) {
+  const selfSocketId =
+    (typeof multiplayerSelfSocketId === "string" && multiplayerSelfSocketId) ||
+    (multiplayerSocket && typeof multiplayerSocket.id === "string" ? multiplayerSocket.id : "");
+  if (!socketId || (selfSocketId && socketId === selfSocketId)) {
     return null;
   }
 
@@ -6134,6 +6139,13 @@ function ensureRemotePlayerState(playerData) {
   } else if (state.username !== username) {
     state.username = username;
     applyNameTagToAvatar(state.avatar, username, 1.15, 6.2);
+  }
+
+  if (state.avatar && state.avatar.parent !== scene) {
+    scene.add(state.avatar);
+  }
+  if (state.avatar) {
+    state.avatar.visible = true;
   }
 
   const position = sanitizePositionPayload(playerData.position);
@@ -6280,6 +6292,9 @@ function clearLocalForSaleStreetNpcs() {
 function setMultiplayerStreetAuthority(active) {
   const nextActive = Boolean(active);
   if (multiplayerStreetAuthority === nextActive) {
+    if (nextActive) {
+      clearLocalForSaleStreetNpcs();
+    }
     return;
   }
   multiplayerStreetAuthority = nextActive;
@@ -6529,12 +6544,15 @@ function connectMultiplayer() {
 
   multiplayerSocket.on("connect", () => {
     multiplayerConnected = true;
+    multiplayerSelfSocketId = typeof multiplayerSocket.id === "string" ? multiplayerSocket.id : "";
     multiplayerMovementSendAccumulator = 0;
+    setMultiplayerStreetAuthority(true);
     syncMultiplayerProfile();
   });
 
   multiplayerSocket.on("disconnect", () => {
     multiplayerConnected = false;
+    multiplayerSelfSocketId = "";
     clearPendingNetworkPurchase();
     clearRemotePlayers();
     setMultiplayerStreetAuthority(false);
@@ -6542,6 +6560,10 @@ function connectMultiplayer() {
 
   multiplayerSocket.on("world:state", (payload = {}) => {
     syncMultiplayerServerTime(payload.serverTimeMs);
+    multiplayerSelfSocketId =
+      typeof payload.selfSocketId === "string" && payload.selfSocketId
+        ? payload.selfSocketId
+        : multiplayerSelfSocketId;
     setMultiplayerStreetAuthority(true);
     reconcileRemotePlayers(payload.players);
     reconcileNetworkStreetCharacters(payload.streetCharacters);
@@ -6565,8 +6587,15 @@ function connectMultiplayer() {
       payload && typeof payload.socketId === "string" ? remotePlayers.get(payload.socketId) : null;
     const state = ensureRemotePlayerState({
       socketId: payload.socketId,
-      username: existingState ? existingState.username : DEFAULT_NAMETAG,
-      rebirthCount: existingState ? existingState.rebirthCount : 0,
+      username:
+        (payload && typeof payload.username === "string" && payload.username.trim()) ||
+        (existingState ? existingState.username : DEFAULT_NAMETAG),
+      rebirthCount:
+        payload && Number.isFinite(Number(payload.rebirthCount))
+          ? Number(payload.rebirthCount)
+          : existingState
+            ? existingState.rebirthCount
+            : 0,
       position: payload.position,
     });
     if (!state) {
