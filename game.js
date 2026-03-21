@@ -34,6 +34,10 @@ const usernameFieldEl = document.getElementById("usernameField");
 const randomizeAvatarBtnEl = document.getElementById("randomizeAvatarBtn");
 const moneyHudEl = document.getElementById("moneyHud");
 const interactionPromptEl = document.getElementById("interactionPrompt");
+const mobileControlsEl = document.getElementById("mobileControls");
+const mobileJoystickEl = document.getElementById("mobileJoystick");
+const mobileJoystickThumbEl = document.getElementById("mobileJoystickThumb");
+const mobileCollectBtnEl = document.getElementById("mobileCollectBtn");
 const spawnNotificationEl = document.getElementById("spawnNotification");
 const offlineIncomeOverlayEl = document.getElementById("offlineIncomeOverlay");
 const offlineIncomeTitleEl = document.getElementById("offlineIncomeTitle");
@@ -109,6 +113,10 @@ const CAMERA_COLLISION_RADIUS = 0.42;
 const CAMERA_COLLISION_PADDING = 0.14;
 const ARROW_LOOK_SPEED_X = 260;
 const ARROW_LOOK_SPEED_Y = 220;
+const MOBILE_TOUCH_ENABLED = navigator.maxTouchPoints > 0;
+const MOBILE_JOYSTICK_DEADZONE = 0.2;
+const MOBILE_JOYSTICK_MAX_TRAVEL_PX = 38;
+const MULTIPLAYER_ENABLED = false;
 const TOUCH_LOOK_DEADZONE_PX = 0.65;
 const WHEEL_LOOK_DEADZONE = 5.5;
 const TORSO_BASE_Y = 2.8;
@@ -661,7 +669,7 @@ const SOCKET_URL = (() => {
   }
   return "";
 })();
-const BUILD_ID = "20260321-358";
+const BUILD_ID = "20260321-360";
 
 const clock = new THREE.Clock();
 const velocity = new THREE.Vector3();
@@ -793,6 +801,10 @@ let multiplayerPendingPurchaseCharacterId = "";
 let multiplayerPendingPurchaseNpcId = 0;
 const remotePlayers = new Map();
 const networkStreetCharacters = new Map();
+const mobileMoveInputState = { w: false, a: false, s: false, d: false };
+let mobileJoystickTouchId = -1;
+let mobileJoystickVectorX = 0;
+let mobileJoystickVectorY = 0;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xc9e8ff);
@@ -6534,6 +6546,12 @@ function updateMultiplayerPositionSync(dt) {
 }
 
 function connectMultiplayer() {
+  if (!MULTIPLAYER_ENABLED) {
+    multiplayerConnected = false;
+    multiplayerStreetAuthority = false;
+    multiplayerSelfSocketId = "";
+    return;
+  }
   if (!isSocketIoReady() || !SOCKET_URL || multiplayerSocket) {
     return;
   }
@@ -9530,8 +9548,6 @@ function updateNpcBuyingAndIncome(dt) {
   ensureSlotBaseAssignment(activeSlot, activeSaveSlotIndex);
   const rebirthMultiplier = getSlotRebirthMultiplier(activeSlot);
 
-  let collectedDollars = 0;
-  const collectionRadiusFallback = PLAYER_COLLIDER_RADIUS + 0.52;
   for (const student of studentNpcs) {
     if (!student || student.purchaseState !== "generating" || !student.avatar || !student.avatar.userData) {
       continue;
@@ -9550,32 +9566,10 @@ function updateNpcBuyingAndIncome(dt) {
         student.pendingMoney = (student.pendingMoney || 0) + wholePayout;
       }
     }
-
-    let canCollectFromPad = false;
-    if (Number.isInteger(student.assignedBaseIndex) && Number.isInteger(student.assignedPadIndex)) {
-      canCollectFromPad = isPlayerOnIncomePad(student.assignedBaseIndex, student.assignedPadIndex);
-    }
-    if (!canCollectFromPad) {
-      // Fallback for legacy/invalid pad assignment data.
-      const targetPad = student.assignedPadWorld;
-      if (targetPad && Number.isFinite(targetPad.x) && Number.isFinite(targetPad.z)) {
-        const dx = targetPad.x - player.position.x;
-        const dz = targetPad.z - player.position.z;
-        canCollectFromPad = Math.hypot(dx, dz) <= collectionRadiusFallback;
-      }
-    }
-    if (canCollectFromPad && (student.pendingMoney || 0) > 0) {
-      collectedDollars += student.pendingMoney;
-      student.pendingMoney = 0;
-    }
     updateNpcInfoTag(student);
   }
 
-  if (collectedDollars > 0) {
-    activeSlot.money = clampInt(activeSlot.money + collectedDollars, 0, MAX_CURRENCY_VALUE, activeSlot.money);
-    saveSaveSlotsToStorage();
-    renderSaveSlotsUi();
-  }
+  collectNearbyIncomeFromPads();
 
   if (!running || isMenuOpen() || isRebirthOverlayOpen()) {
     npcBuyHoldTimer = 0;
@@ -13442,6 +13436,120 @@ function getTouchByIdentifier(touchList, identifier) {
   return null;
 }
 
+function shouldShowMobileControls() {
+  return MOBILE_TOUCH_ENABLED && running && !isMenuOpen() && !isBlockingGameplayOverlayOpen();
+}
+
+function updateMobileControlsVisibility() {
+  if (!mobileControlsEl) {
+    return;
+  }
+  const shouldShow = shouldShowMobileControls();
+  if (!shouldShow && (mobileJoystickTouchId >= 0 || mobileJoystickVectorX !== 0 || mobileJoystickVectorY !== 0)) {
+    resetMobileJoystick();
+  }
+  mobileControlsEl.classList.toggle("hidden", !shouldShow);
+  mobileControlsEl.setAttribute("aria-hidden", shouldShow ? "false" : "true");
+}
+
+function updateMobileMovementFlags() {
+  mobileMoveInputState.w = mobileJoystickVectorY <= -MOBILE_JOYSTICK_DEADZONE;
+  mobileMoveInputState.s = mobileJoystickVectorY >= MOBILE_JOYSTICK_DEADZONE;
+  mobileMoveInputState.a = mobileJoystickVectorX <= -MOBILE_JOYSTICK_DEADZONE;
+  mobileMoveInputState.d = mobileJoystickVectorX >= MOBILE_JOYSTICK_DEADZONE;
+}
+
+function updateMobileJoystickThumb() {
+  if (!mobileJoystickThumbEl) {
+    return;
+  }
+  const offsetX = mobileJoystickVectorX * MOBILE_JOYSTICK_MAX_TRAVEL_PX;
+  const offsetY = mobileJoystickVectorY * MOBILE_JOYSTICK_MAX_TRAVEL_PX;
+  mobileJoystickThumbEl.style.transform = `translate3d(${offsetX}px, ${offsetY}px, 0)`;
+}
+
+function setMobileJoystickVector(nextX, nextY) {
+  let x = Number.isFinite(nextX) ? nextX : 0;
+  let y = Number.isFinite(nextY) ? nextY : 0;
+  const length = Math.hypot(x, y);
+  if (length > 1) {
+    x /= length;
+    y /= length;
+  }
+  mobileJoystickVectorX = clamp(x, -1, 1);
+  mobileJoystickVectorY = clamp(y, -1, 1);
+  updateMobileMovementFlags();
+  updateMobileJoystickThumb();
+}
+
+function resetMobileJoystick() {
+  mobileJoystickTouchId = -1;
+  setMobileJoystickVector(0, 0);
+}
+
+function updateMobileJoystickFromTouch(clientX, clientY) {
+  if (!mobileJoystickEl) {
+    return;
+  }
+  const rect = mobileJoystickEl.getBoundingClientRect();
+  const centerX = rect.left + rect.width * 0.5;
+  const centerY = rect.top + rect.height * 0.5;
+  const radius = Math.min(rect.width, rect.height) * 0.5;
+  const dx = clientX - centerX;
+  const dy = clientY - centerY;
+  const clampedLength = Math.min(radius, Math.hypot(dx, dy));
+  const angle = Math.atan2(dy, dx);
+  const normalizedX = radius > 0 ? (Math.cos(angle) * clampedLength) / radius : 0;
+  const normalizedY = radius > 0 ? (Math.sin(angle) * clampedLength) / radius : 0;
+  if (!Number.isFinite(normalizedX) || !Number.isFinite(normalizedY)) {
+    setMobileJoystickVector(0, 0);
+    return;
+  }
+  setMobileJoystickVector(normalizedX, normalizedY);
+}
+
+function collectNearbyIncomeFromPads() {
+  const activeSlot = getActiveSaveSlot();
+  if (!activeSlot) {
+    return 0;
+  }
+
+  let collectedDollars = 0;
+  const collectionRadiusFallback = PLAYER_COLLIDER_RADIUS + 0.52;
+  for (const student of studentNpcs) {
+    if (!student || student.purchaseState !== "generating" || !student.avatar || !student.avatar.userData) {
+      continue;
+    }
+
+    let canCollectFromPad = false;
+    if (Number.isInteger(student.assignedBaseIndex) && Number.isInteger(student.assignedPadIndex)) {
+      canCollectFromPad = isPlayerOnIncomePad(student.assignedBaseIndex, student.assignedPadIndex);
+    }
+    if (!canCollectFromPad) {
+      const targetPad = student.assignedPadWorld;
+      if (targetPad && Number.isFinite(targetPad.x) && Number.isFinite(targetPad.z)) {
+        const dx = targetPad.x - player.position.x;
+        const dz = targetPad.z - player.position.z;
+        canCollectFromPad = Math.hypot(dx, dz) <= collectionRadiusFallback;
+      }
+    }
+    if (!canCollectFromPad || (student.pendingMoney || 0) <= 0) {
+      continue;
+    }
+    collectedDollars += student.pendingMoney;
+    student.pendingMoney = 0;
+    updateNpcInfoTag(student);
+  }
+
+  if (collectedDollars > 0) {
+    activeSlot.money = clampInt(activeSlot.money + collectedDollars, 0, MAX_CURRENCY_VALUE, activeSlot.money);
+    saveSaveSlotsToStorage();
+    renderSaveSlotsUi();
+  }
+
+  return collectedDollars;
+}
+
 function updateMovement(dt) {
   const shopEffects = getActiveAdonisShopEffectProfile(getActiveSaveSlot());
   const speedMultiplier = Number.isFinite(shopEffects.speedMultiplier) ? shopEffects.speedMultiplier : 1;
@@ -13449,8 +13557,8 @@ function updateMovement(dt) {
   const gravityMultiplier = Number.isFinite(shopEffects.gravityMultiplier) ? shopEffects.gravityMultiplier : 1;
   const moveSpeed = WALK_SPEED * PLAYER_SPEED_MULTIPLIER * speedMultiplier;
   const accelScale = PLAYER_SPEED_MULTIPLIER * speedMultiplier;
-  const forwardInput = (keyState.w ? 1 : 0) + (keyState.s ? -1 : 0);
-  const rightInput = (keyState.d ? 1 : 0) + (keyState.a ? -1 : 0);
+  const forwardInput = (keyState.w || mobileMoveInputState.w ? 1 : 0) + (keyState.s || mobileMoveInputState.s ? -1 : 0);
+  const rightInput = (keyState.d || mobileMoveInputState.d ? 1 : 0) + (keyState.a || mobileMoveInputState.a ? -1 : 0);
   const hasInput = forwardInput !== 0 || rightInput !== 0;
 
   tmpForward.set(Math.sin(yaw), 0, -Math.cos(yaw));
@@ -14035,6 +14143,7 @@ window.addEventListener("blur", () => {
   oneFingerLookActive = false;
   oneFingerTouchId = -1;
   twoFingerLookActive = false;
+  resetMobileJoystick();
 });
 
 window.addEventListener("mousemove", (event) => {
@@ -14198,6 +14307,80 @@ canvas.addEventListener("touchcancel", () => {
   touchPinchDistance = 0;
 });
 
+if (mobileJoystickEl) {
+  mobileJoystickEl.addEventListener(
+    "touchstart",
+    (event) => {
+      if (!shouldShowMobileControls() || mobileJoystickTouchId >= 0 || event.touches.length === 0) {
+        return;
+      }
+      const touch = event.changedTouches[0];
+      mobileJoystickTouchId = touch.identifier;
+      updateMobileJoystickFromTouch(touch.clientX, touch.clientY);
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    { passive: false }
+  );
+}
+
+window.addEventListener(
+  "touchmove",
+  (event) => {
+    if (mobileJoystickTouchId < 0) {
+      return;
+    }
+    const touch = getTouchByIdentifier(event.touches, mobileJoystickTouchId);
+    if (!touch) {
+      return;
+    }
+    updateMobileJoystickFromTouch(touch.clientX, touch.clientY);
+    event.preventDefault();
+  },
+  { passive: false }
+);
+
+window.addEventListener("touchend", (event) => {
+  if (mobileJoystickTouchId < 0) {
+    return;
+  }
+  const touch = getTouchByIdentifier(event.changedTouches, mobileJoystickTouchId);
+  if (!touch) {
+    return;
+  }
+  resetMobileJoystick();
+});
+
+window.addEventListener("touchcancel", (event) => {
+  if (mobileJoystickTouchId < 0) {
+    return;
+  }
+  const touch = getTouchByIdentifier(event.changedTouches, mobileJoystickTouchId);
+  if (!touch) {
+    return;
+  }
+  resetMobileJoystick();
+});
+
+if (mobileCollectBtnEl) {
+  const handleMobileCollect = (event) => {
+    if (!shouldShowMobileControls()) {
+      return;
+    }
+    collectNearbyIncomeFromPads();
+    mobileCollectBtnEl.classList.add("is-pressed");
+    window.setTimeout(() => {
+      if (mobileCollectBtnEl) {
+        mobileCollectBtnEl.classList.remove("is-pressed");
+      }
+    }, 110);
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  mobileCollectBtnEl.addEventListener("touchstart", handleMobileCollect, { passive: false });
+  mobileCollectBtnEl.addEventListener("click", handleMobileCollect);
+}
+
 window.addEventListener(
   "wheel",
   (event) => {
@@ -14273,6 +14456,7 @@ function animate() {
   updateInteractionPromptOverride(rawDt);
   updateAdonisShopMessage(rawDt);
   updateSpawnNotification(rawDt);
+  updateMobileControlsVisibility();
   const frameDt = Math.min(rawDt, 1 / 30);
   const blockedBySecondaryTab = isSecondaryTabBlocked();
   if (!blockedBySecondaryTab) {

@@ -13,12 +13,18 @@
       href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Sora:wght@400;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260321-358" />
+    <link rel="stylesheet" href="styles.css?v=20260321-360" />
   </head>
   <body>
     <canvas id="gameCanvas" aria-label="3D game view"></canvas>
     <div id="moneyHud" aria-label="Money">$0</div>
     <div id="interactionPrompt" class="hidden" aria-live="polite"></div>
+    <div id="mobileControls" class="mobile-controls hidden" aria-hidden="true">
+      <div id="mobileJoystick" class="mobile-joystick" aria-label="Movement joystick">
+        <div id="mobileJoystickThumb" class="mobile-joystick-thumb"></div>
+      </div>
+      <button id="mobileCollectBtn" type="button" class="mobile-collect-btn" aria-label="Collect money">Collect</button>
+    </div>
     <div id="spawnNotification" class="spawn-notification hidden" aria-live="polite"></div>
     <div id="offlineIncomeOverlay" class="offline-income-overlay hidden" aria-live="polite" aria-modal="true" role="dialog">
       <div class="offline-income-card">
@@ -288,6 +294,6 @@
     <script>
       window.SOCKET_URL = "https://catch-a-classmate.onrender.com";
     </script>
-    <script src="game.js?v=20260321-358"></script>
+    <script src="game.js?v=20260321-360"></script>
   </body>
 </html>
