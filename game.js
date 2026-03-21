@@ -642,7 +642,26 @@ const WORLD_SIMULATION_STEP = 0.25;
 const MAX_BACKGROUND_CATCHUP_SECONDS = 90;
 const SAVE_AUTOSAVE_INTERVAL_SECONDS = 2;
 const OFFLINE_INCOME_MAX_SECONDS = 8 * 60 * 60;
-const BUILD_ID = "20260321-356";
+const MULTIPLAYER_POSITION_SEND_HZ = 15;
+const MULTIPLAYER_POSITION_SEND_INTERVAL = 1 / MULTIPLAYER_POSITION_SEND_HZ;
+const MULTIPLAYER_REMOTE_PLAYER_LERP = 0.16;
+const MULTIPLAYER_REMOTE_ROTATION_LERP = 0.2;
+const SOCKET_URL = (() => {
+  const configuredUrl =
+    typeof globalThis.SOCKET_URL === "string"
+      ? globalThis.SOCKET_URL.trim()
+      : typeof window.SOCKET_URL === "string"
+        ? window.SOCKET_URL.trim()
+        : "";
+  if (configuredUrl) {
+    return configuredUrl;
+  }
+  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+    return `${window.location.protocol}//${window.location.hostname}:3000`;
+  }
+  return "";
+})();
+const BUILD_ID = "20260321-357";
 
 const clock = new THREE.Clock();
 const velocity = new THREE.Vector3();
@@ -764,6 +783,15 @@ let interactionPromptOverrideTone = "default";
 let interactionPromptOverrideTimer = 0;
 let npcRuntimeIdCounter = 1;
 let dayNightCycleTime = 0;
+let multiplayerSocket = null;
+let multiplayerConnected = false;
+let multiplayerStreetAuthority = false;
+let multiplayerServerTimeOffsetMs = 0;
+let multiplayerMovementSendAccumulator = 0;
+let multiplayerPendingPurchaseCharacterId = "";
+let multiplayerPendingPurchaseNpcId = 0;
+const remotePlayers = new Map();
+const networkStreetCharacters = new Map();
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xc9e8ff);
@@ -6022,6 +6050,561 @@ function updateSpawnNotification(dt) {
   spawnNotificationEl.classList.remove("spawn-notification-legendary", "spawn-notification-mythic");
 }
 
+function isSocketIoReady() {
+  return typeof window.io === "function";
+}
+
+function isMultiplayerStreetAuthorityEnabled() {
+  return multiplayerStreetAuthority && multiplayerConnected;
+}
+
+function syncMultiplayerServerTime(serverTimeMs) {
+  const safeServerTimeMs = Number(serverTimeMs);
+  if (!Number.isFinite(safeServerTimeMs) || safeServerTimeMs <= 0) {
+    return;
+  }
+  const nextOffset = safeServerTimeMs - Date.now();
+  if (!Number.isFinite(multiplayerServerTimeOffsetMs)) {
+    multiplayerServerTimeOffsetMs = nextOffset;
+    return;
+  }
+  multiplayerServerTimeOffsetMs += (nextOffset - multiplayerServerTimeOffsetMs) * 0.25;
+}
+
+function getEstimatedMultiplayerServerTimeMs() {
+  return Date.now() + multiplayerServerTimeOffsetMs;
+}
+
+function clearPendingNetworkPurchase(characterId = "") {
+  if (!characterId || multiplayerPendingPurchaseCharacterId === characterId) {
+    multiplayerPendingPurchaseCharacterId = "";
+    multiplayerPendingPurchaseNpcId = 0;
+  }
+}
+
+function createRemotePlayerAvatar(username) {
+  const avatar = createBlockyAvatar();
+  avatar.position.set(SPAWN_X, 0, SPAWN_Z);
+  avatar.userData.isRemotePlayer = true;
+  avatar.userData.nameTagSprite && (avatar.userData.nameTagSprite.renderOrder = 7);
+  applyNameTagToAvatar(avatar, username, 1.15, 6.2);
+  return avatar;
+}
+
+function removeRemotePlayer(socketId) {
+  const state = remotePlayers.get(socketId);
+  if (!state) {
+    return;
+  }
+  scene.remove(state.avatar);
+  remotePlayers.delete(socketId);
+}
+
+function clearRemotePlayers() {
+  for (const socketId of Array.from(remotePlayers.keys())) {
+    removeRemotePlayer(socketId);
+  }
+}
+
+function ensureRemotePlayerState(playerData) {
+  if (!playerData || typeof playerData !== "object") {
+    return null;
+  }
+  const socketId = typeof playerData.socketId === "string" ? playerData.socketId : "";
+  if (!socketId || (multiplayerSocket && socketId === multiplayerSocket.id)) {
+    return null;
+  }
+
+  const username = sanitizeNameTag(playerData.username || DEFAULT_NAMETAG);
+  let state = remotePlayers.get(socketId);
+  let wasCreated = false;
+  if (!state) {
+    const avatar = createRemotePlayerAvatar(username);
+    state = {
+      socketId,
+      avatar,
+      username,
+      rebirthCount: 0,
+      targetPosition: new THREE.Vector3(),
+      targetRotationY: 0,
+    };
+    wasCreated = true;
+    remotePlayers.set(socketId, state);
+    scene.add(avatar);
+  } else if (state.username !== username) {
+    state.username = username;
+    applyNameTagToAvatar(state.avatar, username, 1.15, 6.2);
+  }
+
+  const position = sanitizePositionPayload(playerData.position);
+  state.rebirthCount = clampInt(playerData.rebirthCount, 0, 999, 0);
+  state.targetPosition.set(position.x, position.y, position.z);
+  state.targetRotationY = position.rotationY;
+
+  if (wasCreated || !Number.isFinite(state.avatar.position.x) || !Number.isFinite(state.avatar.position.z)) {
+    state.avatar.position.copy(state.targetPosition);
+    state.avatar.rotation.y = state.targetRotationY;
+  }
+
+  return state;
+}
+
+function reconcileRemotePlayers(playerList) {
+  const seenIds = new Set();
+  const safePlayerList = Array.isArray(playerList) ? playerList : [];
+  for (let i = 0; i < safePlayerList.length; i += 1) {
+    const state = ensureRemotePlayerState(safePlayerList[i]);
+    if (state) {
+      seenIds.add(state.socketId);
+    }
+  }
+
+  for (const socketId of Array.from(remotePlayers.keys())) {
+    if (!seenIds.has(socketId)) {
+      removeRemotePlayer(socketId);
+    }
+  }
+}
+
+function updateRemotePlayers() {
+  for (const state of remotePlayers.values()) {
+    if (!state || !state.avatar) {
+      continue;
+    }
+    state.avatar.position.lerp(state.targetPosition, MULTIPLAYER_REMOTE_PLAYER_LERP);
+    state.avatar.rotation.y = lerpAngle(
+      state.avatar.rotation.y,
+      state.targetRotationY,
+      MULTIPLAYER_REMOTE_ROTATION_LERP
+    );
+  }
+}
+
+function sanitizePositionPayload(rawPosition) {
+  const safe = rawPosition && typeof rawPosition === "object" ? rawPosition : {};
+  return {
+    x: Number.isFinite(Number(safe.x)) ? Number(safe.x) : 0,
+    y: Number.isFinite(Number(safe.y)) ? Number(safe.y) : 0,
+    z: Number.isFinite(Number(safe.z)) ? Number(safe.z) : 0,
+    rotationY: Number.isFinite(Number(safe.rotationY)) ? Number(safe.rotationY) : 0,
+  };
+}
+
+function isNetworkStreetCharacter(student) {
+  return Boolean(student && student.avatar && student.avatar.userData && student.avatar.userData.networkCharacterId);
+}
+
+function getNetworkStreetCharacterById(characterId) {
+  if (!characterId) {
+    return null;
+  }
+  const mappedNpcId = networkStreetCharacters.get(characterId);
+  if (mappedNpcId) {
+    return getStudentNpcById(mappedNpcId);
+  }
+  for (let i = 0; i < studentNpcs.length; i += 1) {
+    const student = studentNpcs[i];
+    if (!student || !student.avatar || !student.avatar.userData) {
+      continue;
+    }
+    if (student.avatar.userData.networkCharacterId === characterId) {
+      networkStreetCharacters.set(characterId, student.id);
+      return student;
+    }
+  }
+  return null;
+}
+
+function removeStudentNpcFromScene(student) {
+  if (!student) {
+    return;
+  }
+  const index = studentNpcs.indexOf(student);
+  if (index >= 0) {
+    studentNpcs.splice(index, 1);
+  }
+  if (student.avatar) {
+    scene.remove(student.avatar);
+  }
+}
+
+function clearNetworkStreetMetadata(student) {
+  if (!student || !student.avatar || !student.avatar.userData) {
+    return;
+  }
+  const characterId = student.avatar.userData.networkCharacterId;
+  if (characterId) {
+    networkStreetCharacters.delete(characterId);
+  }
+  delete student.avatar.userData.networkCharacterId;
+  delete student.avatar.userData.networkSpawnedAtMs;
+  delete student.avatar.userData.networkStartX;
+  delete student.avatar.userData.networkStartZ;
+  delete student.avatar.userData.networkEndZ;
+  delete student.avatar.userData.networkSpeed;
+  delete student.avatar.userData.networkExpiresAtMs;
+}
+
+function removeNetworkStreetCharacter(characterId) {
+  if (!characterId) {
+    return;
+  }
+  const student = getNetworkStreetCharacterById(characterId);
+  clearPendingNetworkPurchase(characterId);
+  networkStreetCharacters.delete(characterId);
+  if (!student) {
+    return;
+  }
+  removeStudentNpcFromScene(student);
+}
+
+function clearAllNetworkStreetCharacters() {
+  for (const characterId of Array.from(networkStreetCharacters.keys())) {
+    removeNetworkStreetCharacter(characterId);
+  }
+}
+
+function clearLocalForSaleStreetNpcs() {
+  for (let i = studentNpcs.length - 1; i >= 0; i -= 1) {
+    const student = studentNpcs[i];
+    if (!student || !student.avatar || !student.avatar.userData) {
+      continue;
+    }
+    if (student.purchaseState !== "forSale" || !student.avatar.userData.isStreetWalker) {
+      continue;
+    }
+    removeStudentNpcFromScene(student);
+  }
+}
+
+function setMultiplayerStreetAuthority(active) {
+  const nextActive = Boolean(active);
+  if (multiplayerStreetAuthority === nextActive) {
+    return;
+  }
+  multiplayerStreetAuthority = nextActive;
+  if (nextActive) {
+    clearLocalForSaleStreetNpcs();
+    return;
+  }
+  clearAllNetworkStreetCharacters();
+  for (let i = 0; i < GUARANTEED_SPAWN_TIMER_ORDER.length; i += 1) {
+    resetGuaranteedSpawnTimer(GUARANTEED_SPAWN_TIMER_ORDER[i]);
+  }
+  updateSpawnTimerDisplay(true);
+}
+
+function applyServerTimerSnapshot(timerSnapshot) {
+  if (!timerSnapshot || typeof timerSnapshot !== "object") {
+    return;
+  }
+  for (let i = 0; i < GUARANTEED_SPAWN_TIMER_ORDER.length; i += 1) {
+    const timerId = GUARANTEED_SPAWN_TIMER_ORDER[i];
+    const timerData = timerSnapshot[timerId];
+    if (!timerData) {
+      continue;
+    }
+    guaranteedSpawnTimers[timerId] = {
+      id: timerId,
+      remainingSeconds: Math.max(0, Number(timerData.remainingSeconds) || 0),
+    };
+  }
+  updateSpawnTimerDisplay(true);
+}
+
+function syncNetworkStreetCharacterMotion(student) {
+  if (!isNetworkStreetCharacter(student)) {
+    return;
+  }
+  const avatar = student.avatar;
+  const startX = Number(avatar.userData.networkStartX);
+  const startZ = Number(avatar.userData.networkStartZ);
+  const endZ = Number(avatar.userData.networkEndZ);
+  const speed = Math.max(0, Number(avatar.userData.networkSpeed) || 0);
+  const spawnedAtMs = Number(avatar.userData.networkSpawnedAtMs);
+  if (!Number.isFinite(startX) || !Number.isFinite(startZ) || !Number.isFinite(endZ) || !Number.isFinite(spawnedAtMs)) {
+    return;
+  }
+  const elapsedSeconds = Math.max(0, (getEstimatedMultiplayerServerTimeMs() - spawnedAtMs) / 1000);
+  const nextZ = Math.min(endZ, startZ + speed * elapsedSeconds);
+  avatar.position.x = startX;
+  avatar.position.z = nextZ;
+  student.direction = 1;
+  student.minZ = startZ;
+  student.maxZ = endZ;
+  student.speed = speed;
+}
+
+function hydrateNetworkStreetCharacter(characterData) {
+  if (!characterData || typeof characterData !== "object" || typeof characterData.id !== "string") {
+    return null;
+  }
+
+  let student = getNetworkStreetCharacterById(characterData.id);
+  if (!student) {
+    student =
+      createNpcForName(characterData.name, { variantId: characterData.variantId || "" }) ||
+      createNpcForRarity(characterData.rarity, { variantId: characterData.variantId || "" });
+    if (!student || !student.avatar) {
+      return null;
+    }
+    studentNpcs.push(student);
+    scene.add(student.avatar);
+  }
+
+  student.direction = 1;
+  student.minZ = Number.isFinite(Number(characterData.startZ)) ? Number(characterData.startZ) : NPC_STREAM_START_Z;
+  student.maxZ = Number.isFinite(Number(characterData.endZ)) ? Number(characterData.endZ) : NPC_STREAM_END_Z;
+  student.speed = Number.isFinite(Number(characterData.speed)) ? Number(characterData.speed) : LEO_PATROL_SPEED;
+  student.purchaseState = "forSale";
+  student.assignedBaseIndex = -1;
+  student.assignedPadIndex = -1;
+  student.incomeAccumulator = 0;
+  student.incomePayoutCarry = 0;
+  student.pendingMoney = 0;
+  if (!student.assignedPadWorld || !student.assignedPadWorld.set) {
+    student.assignedPadWorld = new THREE.Vector3();
+  }
+  if (!student.assignedPadStandWorld || !student.assignedPadStandWorld.set) {
+    student.assignedPadStandWorld = new THREE.Vector3();
+  }
+  student.assignedPadWorld.set(0, 0, 0);
+  student.assignedPadStandWorld.set(0, 0, 0);
+  student.assignedPadFacingYaw = Math.PI;
+  student.avatar.userData.isStreetWalker = true;
+  student.avatar.userData.isPurchasedNpc = false;
+  student.avatar.userData.purchaseState = "forSale";
+  student.avatar.userData.networkCharacterId = characterData.id;
+  student.avatar.userData.networkSpawnedAtMs = Number(characterData.spawnedAtMs) || Date.now();
+  student.avatar.userData.networkStartX = Number(characterData.startX) || NPC_STREAM_LANE_X;
+  student.avatar.userData.networkStartZ = Number(characterData.startZ) || NPC_STREAM_START_Z;
+  student.avatar.userData.networkEndZ = Number(characterData.endZ) || NPC_STREAM_END_Z;
+  student.avatar.userData.networkSpeed = Number(characterData.speed) || LEO_PATROL_SPEED;
+  student.avatar.userData.networkExpiresAtMs = Number(characterData.expiresAtMs) || 0;
+  networkStreetCharacters.set(characterData.id, student.id);
+  syncNetworkStreetCharacterMotion(student);
+  updateNpcInfoTag(student);
+  return student;
+}
+
+function reconcileNetworkStreetCharacters(characters) {
+  clearLocalForSaleStreetNpcs();
+  const safeCharacters = Array.isArray(characters) ? characters : [];
+  const seenIds = new Set();
+  for (let i = 0; i < safeCharacters.length; i += 1) {
+    const character = safeCharacters[i];
+    if (!character || typeof character.id !== "string") {
+      continue;
+    }
+    seenIds.add(character.id);
+    hydrateNetworkStreetCharacter(character);
+  }
+  for (const characterId of Array.from(networkStreetCharacters.keys())) {
+    if (!seenIds.has(characterId)) {
+      removeNetworkStreetCharacter(characterId);
+    }
+  }
+}
+
+function finalizeStreetNpcPurchase(student) {
+  const activeSlot = getActiveSaveSlot();
+  if (!activeSlot || !student || !student.avatar || !student.avatar.userData) {
+    return false;
+  }
+
+  const freePad = getFreeIncomePadForActiveSlot();
+  if (!freePad) {
+    showTemporaryInteractionPrompt("You base is full.", "error", 1.4);
+    return false;
+  }
+
+  const cost = clampInt(student.avatar.userData.npcCost, 0, MAX_CURRENCY_VALUE, 0);
+  if (activeSlot.money < cost) {
+    showTemporaryInteractionPrompt("Not enough money", "error", 1.4);
+    return false;
+  }
+
+  activeSlot.money = clampInt(activeSlot.money - cost, 0, MAX_CURRENCY_VALUE, activeSlot.money);
+  clearNetworkStreetMetadata(student);
+  student.purchaseState = "walkingToPad";
+  student.assignedBaseIndex = freePad.basePad.index;
+  student.assignedPadIndex = freePad.padIndex;
+  applyNpcAssignedPadTargets(student, freePad.basePad, freePad.padIndex, freePad.padWorld);
+  student.incomeAccumulator = 0;
+  student.incomePayoutCarry = 0;
+  student.pendingMoney = 0;
+  student.speed = NPC_BUY_WALK_TO_PAD_SPEED;
+  student.avatar.userData.isStreetWalker = false;
+  student.avatar.userData.isPurchasedNpc = true;
+  student.avatar.userData.purchaseState = "walkingToPad";
+  updateNpcInfoTag(student);
+  if (Array.isArray(freePad.basePad.incomePadOccupants) && freePad.padIndex >= 0 && freePad.padIndex < freePad.basePad.incomePadOccupants.length) {
+    freePad.basePad.incomePadOccupants[freePad.padIndex] = student.id;
+  }
+  saveSaveSlotsToStorage();
+  renderSaveSlotsUi();
+  return true;
+}
+
+function handleNetworkStreetCharacterPurchased(payload) {
+  const safePayload = payload && typeof payload === "object" ? payload : {};
+  const characterId = typeof safePayload.characterId === "string" ? safePayload.characterId : "";
+  if (!characterId) {
+    return;
+  }
+
+  const student = getNetworkStreetCharacterById(characterId);
+  const isLocalBuyer = Boolean(multiplayerSocket && safePayload.buyerSocketId === multiplayerSocket.id);
+  clearPendingNetworkPurchase(characterId);
+
+  if (isLocalBuyer) {
+    const purchaseTarget = student || hydrateNetworkStreetCharacter(safePayload.character);
+    if (!purchaseTarget || !finalizeStreetNpcPurchase(purchaseTarget)) {
+      if (purchaseTarget) {
+        removeStudentNpcFromScene(purchaseTarget);
+      }
+    }
+    return;
+  }
+
+  removeNetworkStreetCharacter(characterId);
+}
+
+function handleNetworkStreetCharacterPurchaseDenied(payload) {
+  const safePayload = payload && typeof payload === "object" ? payload : {};
+  const characterId = typeof safePayload.characterId === "string" ? safePayload.characterId : "";
+  if (!characterId) {
+    return;
+  }
+  if (multiplayerPendingPurchaseCharacterId === characterId) {
+    clearPendingNetworkPurchase(characterId);
+    showTemporaryInteractionPrompt("Someone else bought that one.", "error", 1.6);
+  }
+}
+
+function syncMultiplayerProfile() {
+  if (!multiplayerSocket || !multiplayerConnected) {
+    return;
+  }
+  const activeSlot = getActiveSaveSlot();
+  const avatarConfig = getCurrentAvatarConfig();
+  multiplayerSocket.emit("player:register", {
+    username: activeSlot ? activeSlot.username || activeSlot.name || avatarConfig.username : avatarConfig.username,
+    rebirthCount: activeSlot ? getSlotRebirthCount(activeSlot) : 0,
+    position: {
+      x: player.position.x,
+      y: player.position.y,
+      z: player.position.z,
+      rotationY: player.rotation.y,
+    },
+  });
+}
+
+function updateMultiplayerPositionSync(dt) {
+  if (!multiplayerSocket || !multiplayerConnected || !running || activeSaveSlotIndex < 0 || isMenuOpen()) {
+    multiplayerMovementSendAccumulator = 0;
+    return;
+  }
+  multiplayerMovementSendAccumulator += Math.max(0, Number(dt) || 0);
+  if (multiplayerMovementSendAccumulator < MULTIPLAYER_POSITION_SEND_INTERVAL) {
+    return;
+  }
+  multiplayerMovementSendAccumulator = 0;
+  multiplayerSocket.emit("player:move", {
+    x: player.position.x,
+    y: player.position.y,
+    z: player.position.z,
+    rotationY: player.rotation.y,
+  });
+}
+
+function connectMultiplayer() {
+  if (!isSocketIoReady() || !SOCKET_URL || multiplayerSocket) {
+    return;
+  }
+
+  multiplayerSocket = window.io(SOCKET_URL, {
+    transports: ["websocket", "polling"],
+  });
+
+  multiplayerSocket.on("connect", () => {
+    multiplayerConnected = true;
+    multiplayerMovementSendAccumulator = 0;
+    syncMultiplayerProfile();
+  });
+
+  multiplayerSocket.on("disconnect", () => {
+    multiplayerConnected = false;
+    clearPendingNetworkPurchase();
+    clearRemotePlayers();
+    setMultiplayerStreetAuthority(false);
+  });
+
+  multiplayerSocket.on("world:state", (payload = {}) => {
+    syncMultiplayerServerTime(payload.serverTimeMs);
+    setMultiplayerStreetAuthority(true);
+    reconcileRemotePlayers(payload.players);
+    reconcileNetworkStreetCharacters(payload.streetCharacters);
+    applyServerTimerSnapshot(payload.timers);
+  });
+
+  multiplayerSocket.on("players:list", (players) => {
+    reconcileRemotePlayers(players);
+  });
+
+  multiplayerSocket.on("player:joined", (playerData) => {
+    ensureRemotePlayerState(playerData);
+  });
+
+  multiplayerSocket.on("player:left", (payload = {}) => {
+    removeRemotePlayer(payload.socketId);
+  });
+
+  multiplayerSocket.on("player:moved", (payload = {}) => {
+    const existingState =
+      payload && typeof payload.socketId === "string" ? remotePlayers.get(payload.socketId) : null;
+    const state = ensureRemotePlayerState({
+      socketId: payload.socketId,
+      username: existingState ? existingState.username : DEFAULT_NAMETAG,
+      rebirthCount: existingState ? existingState.rebirthCount : 0,
+      position: payload.position,
+    });
+    if (!state) {
+      return;
+    }
+    const position = sanitizePositionPayload(payload.position);
+    state.targetPosition.set(position.x, position.y, position.z);
+    state.targetRotationY = position.rotationY;
+  });
+
+  multiplayerSocket.on("spawnTimers:update", (payload = {}) => {
+    syncMultiplayerServerTime(payload.serverTimeMs);
+    if (payload.timers) {
+      applyServerTimerSnapshot(payload.timers);
+    }
+  });
+
+  multiplayerSocket.on("streetCharacter:spawned", (payload = {}) => {
+    syncMultiplayerServerTime(payload.serverTimeMs);
+    setMultiplayerStreetAuthority(true);
+    if (payload.character) {
+      hydrateNetworkStreetCharacter(payload.character);
+    }
+  });
+
+  multiplayerSocket.on("streetCharacter:despawned", (payload = {}) => {
+    removeNetworkStreetCharacter(payload.characterId);
+  });
+
+  multiplayerSocket.on("streetCharacter:purchased", (payload = {}) => {
+    handleNetworkStreetCharacterPurchased(payload);
+  });
+
+  multiplayerSocket.on("streetCharacter:purchaseDenied", (payload = {}) => {
+    handleNetworkStreetCharacterPurchaseDenied(payload);
+  });
+}
+
 function sanitizeNameTag(value) {
   const cleaned = String(value || "")
     .replace(/\s+/g, " ")
@@ -6646,7 +7229,7 @@ function seedInitialStreetNpcs() {
 }
 
 function updateStreetNpcSpawner(dt = 0) {
-  if (!NPC_STREAM_ENABLED) {
+  if (!NPC_STREAM_ENABLED || isMultiplayerStreetAuthorityEnabled()) {
     return;
   }
   if (dt > 0) {
@@ -6713,6 +7296,10 @@ function triggerGuaranteedSpawn(timerId) {
 }
 
 function updateGuaranteedSpawnTimers(dt = 0) {
+  if (isMultiplayerStreetAuthorityEnabled()) {
+    updateSpawnTimerDisplay(false);
+    return;
+  }
   const safeDt = Math.max(0, Number(dt) || 0);
   if (safeDt <= 0) {
     updateSpawnTimerDisplay(false);
@@ -6798,6 +7385,23 @@ function createNameTagTexture(label) {
     aspect: bubbleWidth / bubbleHeight,
     label: safeLabel,
   };
+}
+
+function applyNameTagToAvatar(avatar, nameValue, scaleY = 1.15, positionY = 6.2) {
+  if (!avatar || !avatar.userData || !avatar.userData.nameTagSprite || !avatar.userData.nameTagSprite.material) {
+    return;
+  }
+  const sprite = avatar.userData.nameTagSprite;
+  const nameTagData = createNameTagTexture(nameValue);
+  if (sprite.material.map) {
+    sprite.material.map.dispose();
+  }
+  sprite.material.map = nameTagData.texture;
+  sprite.material.needsUpdate = true;
+  sprite.scale.set(scaleY * nameTagData.aspect, scaleY, 1);
+  sprite.position.set(0, positionY, 0);
+  sprite.visible = true;
+  avatar.userData.nameTag = nameTagData.label;
 }
 
 function createPadMoneyTagTexture(amount = 0) {
@@ -8652,14 +9256,18 @@ function updateStudentNpcs(dt) {
       student.speed = 0;
       forcedYaw = Number.isFinite(student.assignedPadFacingYaw) ? student.assignedPadFacingYaw : Math.PI;
     } else if (NPC_STREAM_ENABLED && avatar.userData.isStreetWalker) {
-      student.direction = 1;
-      moveStepZ = Math.max(0, student.speed) * dt;
-      avatar.position.z += moveStepZ;
-      if (avatar.position.z >= student.maxZ) {
-        scene.remove(avatar);
-        studentNpcs.splice(index, 1);
-        index -= 1;
-        continue;
+      if (isNetworkStreetCharacter(student)) {
+        syncNetworkStreetCharacterMotion(student);
+      } else {
+        student.direction = 1;
+        moveStepZ = Math.max(0, student.speed) * dt;
+        avatar.position.z += moveStepZ;
+        if (avatar.position.z >= student.maxZ) {
+          scene.remove(avatar);
+          studentNpcs.splice(index, 1);
+          index -= 1;
+          continue;
+        }
       }
     } else if (isLeoNpc && leoState === LEO_STATE_WALK_TO_PAD) {
       const padPosition = getAssignedPadWorldPosition(leoTargetPadPosition);
@@ -9003,6 +9611,11 @@ function updateNpcBuyingAndIncome(dt) {
   const cost = clampInt(targetNpc.avatar.userData.npcCost, 0, MAX_CURRENCY_VALUE, 0);
   const displayName = String(targetNpc.avatar.userData.npcBaseName || targetNpc.avatar.userData.npcDisplayName || "Student");
 
+  if (isMultiplayerStreetAuthorityEnabled() && multiplayerPendingPurchaseCharacterId) {
+    setInteractionPrompt(`Buying ${displayName}...`);
+    return;
+  }
+
   if (activeSlot.money < cost) {
     npcBuyHoldTimer = 0;
     npcBuyTargetId = targetNpc.id;
@@ -9035,28 +9648,23 @@ function updateNpcBuyingAndIncome(dt) {
     return;
   }
 
-  activeSlot.money = clampInt(activeSlot.money - cost, 0, MAX_CURRENCY_VALUE, activeSlot.money);
-  targetNpc.purchaseState = "walkingToPad";
-  targetNpc.assignedBaseIndex = freePad.basePad.index;
-  targetNpc.assignedPadIndex = freePad.padIndex;
-  applyNpcAssignedPadTargets(targetNpc, freePad.basePad, freePad.padIndex, freePad.padWorld);
-  targetNpc.incomeAccumulator = 0;
-  targetNpc.incomePayoutCarry = 0;
-  targetNpc.pendingMoney = 0;
-  targetNpc.speed = NPC_BUY_WALK_TO_PAD_SPEED;
-  targetNpc.avatar.userData.isStreetWalker = false;
-  targetNpc.avatar.userData.isPurchasedNpc = true;
-  targetNpc.avatar.userData.purchaseState = "walkingToPad";
-  updateNpcInfoTag(targetNpc);
-  if (Array.isArray(freePad.basePad.incomePadOccupants) && freePad.padIndex >= 0 && freePad.padIndex < freePad.basePad.incomePadOccupants.length) {
-    freePad.basePad.incomePadOccupants[freePad.padIndex] = targetNpc.id;
-  }
-
   npcBuyHoldTimer = 0;
   npcBuyTargetId = 0;
   setInteractionPrompt("");
-  saveSaveSlotsToStorage();
-  renderSaveSlotsUi();
+
+  if (isMultiplayerStreetAuthorityEnabled() && isNetworkStreetCharacter(targetNpc) && multiplayerSocket && multiplayerConnected) {
+    const networkCharacterId = targetNpc.avatar.userData.networkCharacterId;
+    if (networkCharacterId) {
+      multiplayerPendingPurchaseCharacterId = networkCharacterId;
+      multiplayerPendingPurchaseNpcId = targetNpc.id;
+      multiplayerSocket.emit("streetCharacter:buyAttempt", {
+        characterId: networkCharacterId,
+      });
+      return;
+    }
+  }
+
+  finalizeStreetNpcPurchase(targetNpc);
 }
 
 function setAvatarSkinTone(colorHex) {
@@ -9176,20 +9784,12 @@ function setAvatarPantsColor(colorHex) {
 }
 
 function setAvatarNameTag(nameValue) {
-  const sprite = player.userData.nameTagSprite;
-  if (!sprite || !sprite.material) {
+  if (!player || !player.userData || !player.userData.nameTagSprite) {
     return;
   }
 
   try {
-    const nameTagData = createNameTagTexture(nameValue);
-    if (sprite.material.map) {
-      sprite.material.map.dispose();
-    }
-    sprite.material.map = nameTagData.texture;
-    sprite.material.needsUpdate = true;
-    sprite.scale.set(1.15 * nameTagData.aspect, 1.15, 1);
-    player.userData.nameTag = nameTagData.label;
+    applyNameTagToAvatar(player, nameValue, 1.15, 6.2);
     if (!suspendAvatarPreviewSync) {
       syncAvatarPreview2D();
     }
@@ -10249,6 +10849,7 @@ function performActiveSlotRebirth() {
   renderAdonisShopUi();
   updateIncomePadMoneyLabels();
   updateRebirthUi();
+  syncMultiplayerProfile();
   start();
   if (unlocksSecondFloor) {
     showSpawnNotification(SECOND_FLOOR_UNLOCK_NOTIFICATION_TEXT);
@@ -12252,12 +12853,18 @@ function setSecondaryTabBlocked(nextBlocked) {
     secondaryTabOverlayEl.classList.toggle("hidden", !secondaryTabBlocked);
   }
   if (secondaryTabBlocked) {
+    if (multiplayerSocket && multiplayerSocket.connected) {
+      multiplayerSocket.disconnect();
+    }
     clearInputState();
     closeAdonisShop();
     closeRebirthOverlay();
     closeSellConfirmModal();
     setInteractionPrompt("");
     return;
+  }
+  if (multiplayerSocket && !multiplayerSocket.connected) {
+    multiplayerSocket.connect();
   }
   reloadStateAfterPrimaryTabUnlock();
 }
@@ -12426,6 +13033,7 @@ function applyUsernameToPrimaryProfile(username) {
   saveSaveSlotsToStorage();
   renderSaveSlotsUi();
   updateUsernameFieldLockState();
+  syncMultiplayerProfile();
 }
 
 function commitPrimaryUsername(rawUsername, source = "menu") {
@@ -13226,6 +13834,7 @@ function start() {
   if (leoNpc) {
     applyLeoStateToNpc(leoNpc, false);
   }
+  syncMultiplayerProfile();
 }
 
 if (sellConfirmYesBtnEl) {
@@ -13652,6 +14261,11 @@ function animate() {
     updateHud();
   }
 
+  if (!blockedBySecondaryTab) {
+    updateRemotePlayers();
+    updateMultiplayerPositionSync(rawDt);
+  }
+
   updateIncomePadMoneyLabels();
   updateRebirthUi();
   if (!blockedBySecondaryTab) {
@@ -13746,5 +14360,6 @@ try {
 if (menuScreenEl) {
   menuScreenEl.classList.remove("hidden");
 }
+connectMultiplayer();
 startPrimaryTabLockHeartbeat();
 animate();
