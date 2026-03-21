@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="google-site-verification" content="GT-Tafu3kF8AFjRxeiHKgycIcfFBHXngkBqr5N64enI" />
+    <title>Catch a Classmate</title>
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Sora:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css?v=20260321-356" />
+  </head>
+  <body>
+    <canvas id="gameCanvas" aria-label="3D game view"></canvas>
+    <div id="moneyHud" aria-label="Money">$0</div>
+    <div id="interactionPrompt" class="hidden" aria-live="polite"></div>
+    <div id="spawnNotification" class="spawn-notification hidden" aria-live="polite"></div>
+    <div id="offlineIncomeOverlay" class="offline-income-overlay hidden" aria-live="polite" aria-modal="true" role="dialog">
+      <div class="offline-income-card">
+        <h2 id="offlineIncomeTitle">Offline Income</h2>
+        <p id="offlineIncomeText">You were away and earned money.</p>
+        <button id="offlineIncomeCloseBtn" type="button" class="offline-income-btn">Collect</button>
+      </div>
+    </div>
+    <div id="rebirthFlashOverlay" class="rebirth-flash-overlay" aria-hidden="true"></div>
+    <div id="rebirthDock" class="rebirth-dock hidden" aria-label="Rebirth menu">
+      <button id="rebirthOpenBtn" type="button" class="rebirth-open-btn">Rebirth</button>
+    </div>
+    <div id="rebirthOverlay" class="rebirth-overlay hidden" aria-live="polite" aria-modal="true" role="dialog">
+      <div class="rebirth-card">
+        <button id="rebirthCloseBtn" type="button" class="rebirth-close-btn" aria-label="Close rebirth menu">x</button>
+        <h2 id="rebirthTitle">Rebirth</h2>
+        <p id="rebirthBoostInfo" class="rebirth-boost-info">Reset cash to $250 and clear your classmates. Current boost: x1.00 income</p>
+        <div class="rebirth-requirements">
+          <div id="rebirthOscarCard" class="rebirth-student-card locked">
+            <div class="rebirth-student-art">
+              <span class="rebirth-student-hair"></span>
+              <span class="rebirth-student-head"></span>
+              <span class="rebirth-student-body"></span>
+            </div>
+            <span class="rebirth-student-name">Oscar</span>
+          </div>
+          <div id="rebirthChristianCard" class="rebirth-student-card locked">
+            <div class="rebirth-student-art">
+              <span class="rebirth-student-hair"></span>
+              <span class="rebirth-student-head"></span>
+              <span class="rebirth-student-body"></span>
+            </div>
+            <span class="rebirth-student-name">Christian</span>
+          </div>
+        </div>
+        <div id="rebirthMoneyRequirement" class="rebirth-money-requirement">Money Required: $250,000</div>
+        <div class="rebirth-info-grid">
+          <p id="rebirthOscarProgress">Oscars: 0 / 1</p>
+          <p id="rebirthChristianProgress">Christians: 0 / 1</p>
+          <p id="rebirthMoneyProgress">Money: $0 / $250,000</p>
+          <p id="rebirthNextBoost">Next boost: x2.00</p>
+          <p id="rebirthCountLabel">Rebirths: 0</p>
+        </div>
+        <button id="rebirthConfirmBtn" type="button" class="rebirth-confirm-btn" disabled>Rebirth</button>
+      </div>
+    </div>
+    <div id="sellConfirmOverlay" class="sell-confirm-overlay hidden" aria-live="polite" aria-modal="true" role="dialog">
+      <div class="sell-confirm-card">
+        <h2 id="sellConfirmTitle">Sell Classmate</h2>
+        <p id="sellConfirmText">Are you sure you want to sell this classmate?</p>
+        <div class="sell-confirm-actions">
+          <button id="sellConfirmYes" type="button" class="sell-confirm-btn yes">Yes</button>
+          <button id="sellConfirmNo" type="button" class="sell-confirm-btn no">No</button>
+        </div>
+      </div>
+    </div>
+    <div id="adonisShopOverlay" class="adonis-shop-overlay hidden" aria-live="polite" aria-modal="true" role="dialog">
+      <div class="adonis-shop-card">
+        <button id="adonisShopCloseBtn" type="button" class="adonis-shop-close-btn" aria-label="Close Adonis shop">x</button>
+        <h2 id="adonisShopTitle">Adonis's Shop</h2>
+        <p class="adonis-shop-subtitle">Permanent unlocks for this save slot.</p>
+        <p id="adonisShopMessage" class="adonis-shop-message hidden"></p>
+        <div id="adonisShopList" class="adonis-shop-list"></div>
+      </div>
+    </div>
+    <div id="jacobBlockOverlay" class="jacob-block-overlay hidden" aria-live="assertive" role="dialog">
+      <div class="jacob-block-message">get outa here jacob</div>
+    </div>
+    <div id="usernameRequiredOverlay" class="username-required-overlay hidden" aria-live="assertive" aria-modal="true" role="dialog">
+      <div class="username-required-card">
+        <h2 id="usernameRequiredTitle">Please choose a Username!</h2>
+        <p id="usernameRequiredText" class="username-required-text">This account needs a username before it can play.</p>
+        <label class="customizer-field username-picker-field" for="usernameRequiredInput">
+          <span>Username</span>
+          <input id="usernameRequiredInput" type="text" maxlength="20" placeholder="Choose a username" />
+        </label>
+        <p id="usernameRequiredMessage" class="username-required-message hidden"></p>
+        <button id="usernameRequiredConfirmBtn" class="primary-btn play-btn" type="button">Save Username</button>
+      </div>
+    </div>
+    <div id="secondaryTabOverlay" class="secondary-tab-overlay hidden" aria-live="assertive" aria-modal="true" role="dialog">
+      <div class="secondary-tab-card">
+        <div class="secondary-tab-title">Please only play on the first tab!</div>
+      </div>
+    </div>
+
+    <section id="menuScreen" class="menu-screen" aria-label="Main menu">
+      <h1 class="menu-title">Catch a Classmate</h1>
+      <div class="menu-layout">
+        <nav class="menu-nav" aria-label="Menu tabs">
+          <button type="button" class="menu-nav-btn" data-menu-tab="playPanel">Play</button>
+          <button type="button" class="menu-nav-btn" data-menu-tab="settingsPanel">Settings</button>
+          <button type="button" class="menu-nav-btn" data-menu-tab="creditsPanel">Special credits</button>
+        </nav>
+
+        <main class="menu-main hidden">
+          <section id="playPanel" class="menu-panel" aria-label="Play">
+            <h2>Play</h2>
+            <section class="avatar-preview-wrap" aria-label="2D character preview">
+              <h3>Preview</h3>
+              <canvas id="avatarPreviewCanvas" width="220" height="220"></canvas>
+            </section>
+            <button id="loadSlotBtn" class="primary-btn play-btn" type="button">Play</button>
+            <p id="playValidationMessage" class="play-validation-message hidden" aria-live="polite"></p>
+
+            <section id="customizer" class="customizer" aria-label="Character customization">
+              <h2>Character Customization</h2>
+              <label id="usernameField" class="customizer-field username-field">
+                <span>Username</span>
+                <input id="nametagInput" type="text" value="Player" maxlength="20" />
+              </label>
+              <button id="randomizeAvatarBtn" class="customizer-random" type="button">Randomize</button>
+              <label class="customizer-field">
+                <span>Skin Tone</span>
+                <select id="skinToneSelect">
+                  <option value="#ffd791">Classic Light</option>
+                  <option value="#e6b68e">Warm Tan</option>
+                  <option value="#c08a64">Golden Brown</option>
+                  <option value="#8b5a3b">Deep Brown</option>
+                  <option value="#5f3a2c">Dark Brown</option>
+                </select>
+              </label>
+              <label class="customizer-field">
+                <span>Face</span>
+                <select id="faceSelect">
+                  <option value="smile">Smile</option>
+                  <option value="grin">Grin</option>
+                  <option value="neutral">Neutral</option>
+                  <option value="wink">Wink</option>
+                </select>
+              </label>
+              <label class="customizer-field">
+                <span>Face</span>
+                <select id="leoFaceSelect">
+                  <option value="smile">Smile</option>
+                  <option value="grin">Grin</option>
+                  <option value="neutral">Neutral</option>
+                  <option value="wink">Wink</option>
+                </select>
+              </label>
+              <label class="customizer-field">
+                <span>Smile</span>
+                <div class="customizer-range-row">
+                  <input id="leoSmileRange" type="range" min="1" max="100" value="62" />
+                  <output id="leoSmileValue" for="leoSmileRange">62</output>
+                </div>
+              </label>
+              <label class="customizer-field">
+                <span>Hair Style</span>
+                <select id="hairStyleSelect">
+                  <option value="swoop">Swoop</option>
+                  <option value="curly">Curly</option>
+                  <option value="mohawk">Mohawk</option>
+                  <option value="spikes">Spikes</option>
+                  <option value="none">None</option>
+                </select>
+              </label>
+              <label class="customizer-field">
+                <span>Hair Color</span>
+                <input id="hairColorInput" type="color" value="#2b1a10" />
+              </label>
+              <label class="customizer-field">
+                <span>Shirt Color</span>
+                <input id="shirtColorInput" type="color" value="#2f65df" />
+              </label>
+              <label class="customizer-field">
+                <span>Pants Color</span>
+                <input id="pantsColorInput" type="color" value="#3a9f4d" />
+              </label>
+            </section>
+          </section>
+
+          <section id="settingsPanel" class="menu-panel" aria-label="Settings">
+            <h2>Settings</h2>
+            <label class="settings-field settings-toggle" for="settingsShadowsToggle">
+              <span>Shadows</span>
+              <input id="settingsShadowsToggle" type="checkbox" checked />
+            </label>
+            <label class="settings-field settings-toggle" for="settingsInvertMousepadToggle">
+              <span>Invert Mousepad</span>
+              <input id="settingsInvertMousepadToggle" type="checkbox" />
+            </label>
+            <label class="settings-field" for="settingsQualitySelect">
+              <span>Graphics Quality</span>
+              <select id="settingsQualitySelect">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3" selected>3</option>
+                <option value="4">4</option>
+              </select>
+            </label>
+            <label class="settings-field" for="settingsSensitivityRange">
+              <span>Sensitivity</span>
+              <div class="sensitivity-row">
+                <input id="settingsSensitivityRange" type="range" min="1" max="100" value="50" />
+                <output id="settingsSensitivityValue" for="settingsSensitivityRange">50</output>
+              </div>
+            </label>
+          </section>
+
+          <section id="creditsPanel" class="menu-panel" aria-label="Special credits">
+            <h2>Special credits</h2>
+            <p>Owner: Adonis Clark</p>
+            <p>Developer: Adonis Clark</p>
+            <p>Builder: Adonis Clark</p>
+            <p>UI Designer: Adonis Clark</p>
+          </section>
+        </main>
+
+        <aside class="menu-logo" aria-label="Pittwater House logo">
+          <div class="menu-logo-card">
+            <svg class="school-emblem" viewBox="0 0 680 430" role="img" aria-label="Pittwater House crest">
+              <defs>
+                <linearGradient id="crestBlue" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stop-color="#0e4fa7" />
+                  <stop offset="100%" stop-color="#0a2f70" />
+                </linearGradient>
+                <linearGradient id="crestRed" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#ff6464" />
+                  <stop offset="100%" stop-color="#d73535" />
+                </linearGradient>
+                <linearGradient id="ribbonBlue" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stop-color="#0a377e" />
+                  <stop offset="100%" stop-color="#0f58b7" />
+                </linearGradient>
+                <filter id="crestShadow" x="-30%" y="-30%" width="160%" height="170%">
+                  <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#02163a" flood-opacity="0.5" />
+                </filter>
+              </defs>
+
+              <g filter="url(#crestShadow)">
+                <path fill="url(#crestBlue)" d="M96 24h190v114c0 124-95 174-95 174s-95-50-95-174z" />
+                <path fill="url(#crestRed)" d="M136 64h110v67c0 80-55 113-55 113s-55-33-55-113z" />
+                <path fill="#ffffff" d="M170 118h42c9 0 16 7 16 16v34h-74v-34c0-9 7-16 16-16z" />
+                <line x1="191" y1="122" x2="191" y2="165" stroke="#0a3c8a" stroke-width="4" />
+                <line x1="163" y1="140" x2="219" y2="140" stroke="#0a3c8a" stroke-width="4" />
+                <path fill="url(#ribbonBlue)" d="M120 316h140l28 12-28 12H120l-26-12z" />
+                <text x="190" y="334" text-anchor="middle" fill="#eaf5ff" font-size="18" font-family="Sora, sans-serif" font-weight="700">
+                  SEMPER DILIGENS
+                </text>
+              </g>
+
+              <g filter="url(#crestShadow)">
+                <rect x="328" y="42" width="186" height="186" transform="rotate(45 421 135)" fill="url(#crestBlue)" />
+                <rect x="365" y="79" width="112" height="112" transform="rotate(45 421 135)" fill="url(#crestRed)" />
+                <g fill="#ffffff">
+                  <path d="M393 131c8-9 20-14 32-14 11 0 20 4 28 11v43c-8-7-17-10-28-10-12 0-24 5-32 14z" />
+                  <path d="M449 128c-8-9-20-14-32-14-11 0-20 4-28 11v43c8-7 17-10 28-10 12 0 24 5 32 14z" />
+                </g>
+                <path fill="url(#ribbonBlue)" d="M352 244h140l26 12-26 12H352l-24-12z" />
+                <text x="422" y="262" text-anchor="middle" fill="#eaf5ff" font-size="18" font-family="Sora, sans-serif" font-weight="700">
+                  SEMPER DILIGENS
+                </text>
+              </g>
+            </svg>
+            <div class="menu-logo-text">
+              <h2>Pittwater House</h2>
+              <p>Steal a Student</p>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <script src="three.min.js"></script>
+    <script src="game.js?v=20260321-356"></script>
+  </body>
+</html>

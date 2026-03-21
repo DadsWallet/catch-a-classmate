@@ -1,0 +1,1301 @@
+:root {
+  --menu-bg: rgba(8, 20, 44, 0.9);
+  --panel-bg: rgba(10, 26, 56, 0.9);
+  --panel-border: rgba(160, 196, 255, 0.42);
+  --text-main: #eef6ff;
+  --text-muted: #c6d8f5;
+  --accent-blue: #2a64cc;
+  --accent-red: #d74b4b;
+  --btn-active: #57e1ff;
+  --surface-deep: rgba(8, 22, 49, 0.92);
+  --surface-mid: rgba(12, 31, 66, 0.9);
+  --surface-soft: rgba(14, 35, 73, 0.84);
+  --border-soft: rgba(149, 190, 248, 0.64);
+  --border-strong: rgba(166, 217, 255, 0.88);
+  --shadow-soft: 0 10px 26px rgba(0, 0, 0, 0.28);
+  --shadow-strong: 0 16px 38px rgba(0, 0, 0, 0.4);
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: "Sora", "Trebuchet MS", sans-serif;
+  background: #0a1936;
+  color: var(--text-main);
+}
+
+#gameCanvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#moneyHud {
+  position: fixed;
+  left: 16px;
+  bottom: 14px;
+  z-index: 18;
+  color: #4dff64;
+  font: 800 clamp(1.06rem, 2.6vw, 1.4rem) "Sora", sans-serif;
+  letter-spacing: 0.01em;
+  text-shadow:
+    0 0 2px rgba(8, 34, 10, 0.85),
+    0 0 6px rgba(8, 34, 10, 0.55);
+  pointer-events: none;
+  user-select: none;
+}
+
+#interactionPrompt {
+  position: fixed;
+  left: 50%;
+  bottom: 50px;
+  transform: translateX(-50%);
+  z-index: 19;
+  min-width: 96px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(214, 236, 255, 0.72);
+  background: rgba(7, 19, 38, 0.88);
+  color: #f3fbff;
+  font: 700 0.92rem "Sora", sans-serif;
+  text-align: center;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  user-select: none;
+}
+
+#interactionPrompt.hidden {
+  display: none;
+}
+
+#interactionPrompt.prompt-error {
+  border-color: rgba(255, 126, 126, 0.95);
+  background: rgba(61, 10, 10, 0.92);
+  color: #ff6b6b;
+  box-shadow: 0 0 0 1px rgba(255, 76, 76, 0.18), 0 10px 24px rgba(0, 0, 0, 0.34);
+}
+
+.spawn-notification {
+  position: fixed;
+  left: 50%;
+  top: 20px;
+  transform: translateX(-50%);
+  z-index: 24;
+  min-width: min(72vw, 420px);
+  padding: 11px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(241, 233, 255, 0.4);
+  background: rgba(9, 16, 30, 0.86);
+  color: #f7fbff;
+  font: 800 1rem "Sora", sans-serif;
+  text-align: center;
+  letter-spacing: 0.02em;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.34);
+  pointer-events: none;
+  user-select: none;
+}
+
+.spawn-notification.hidden {
+  display: none;
+}
+
+.spawn-notification.spawn-notification-legendary {
+  border-color: rgba(255, 220, 101, 0.9);
+  background: rgba(57, 40, 8, 0.9);
+  color: #ffe181;
+}
+
+.spawn-notification.spawn-notification-mythic {
+  border-color: rgba(255, 124, 223, 0.9);
+  background: rgba(43, 13, 52, 0.92);
+  color: #ff9eed;
+}
+
+.offline-income-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 33;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(7, 15, 29, 0.52);
+}
+
+.offline-income-overlay.hidden {
+  display: none;
+}
+
+.offline-income-card {
+  width: min(92vw, 420px);
+  border-radius: 18px;
+  border: 1px solid rgba(176, 217, 255, 0.72);
+  background: linear-gradient(180deg, rgba(17, 36, 72, 0.96), rgba(10, 24, 50, 0.96));
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.38);
+  padding: 20px 20px 18px;
+  text-align: center;
+}
+
+#offlineIncomeTitle {
+  margin: 0 0 8px;
+  color: #ffffff;
+  font: 700 1.52rem "Cinzel", Georgia, serif;
+}
+
+#offlineIncomeText {
+  margin: 0 0 16px;
+  color: #eaf4ff;
+  font: 700 0.98rem "Sora", sans-serif;
+  line-height: 1.45;
+}
+
+.offline-income-btn {
+  min-width: 150px;
+  min-height: 44px;
+  border-radius: 13px;
+  border: 1px solid rgba(170, 229, 186, 0.92);
+  background: linear-gradient(180deg, rgba(86, 182, 103, 0.98), rgba(48, 132, 63, 0.98));
+  color: #f7fff8;
+  font: 800 0.98rem "Sora", sans-serif;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(31, 111, 52, 0.24);
+}
+
+.rebirth-flash-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 34;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(circle at center, rgba(255, 248, 205, 0.92), rgba(255, 247, 214, 0.58) 34%, rgba(255, 255, 255, 0.06) 74%, rgba(255, 255, 255, 0) 100%);
+}
+
+.rebirth-flash-overlay.active {
+  animation: rebirthFlashPulse 0.72s ease-out forwards;
+}
+
+@keyframes rebirthFlashPulse {
+  0% {
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.rebirth-dock {
+  position: fixed;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 25;
+}
+
+.rebirth-dock.hidden {
+  display: none;
+}
+
+.rebirth-open-btn {
+  min-width: 122px;
+  min-height: 48px;
+  border: 1px solid rgba(194, 204, 221, 0.78);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(152, 158, 169, 0.96), rgba(104, 111, 123, 0.96));
+  color: #f7fbff;
+  font: 800 1rem "Sora", sans-serif;
+  letter-spacing: 0.03em;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+}
+
+.rebirth-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 14, 24, 0.44);
+}
+
+.rebirth-overlay.hidden {
+  display: none;
+}
+
+.rebirth-card {
+  position: relative;
+  width: min(92vw, 560px);
+  border-radius: 18px;
+  border: 1px solid rgba(182, 191, 205, 0.86);
+  background: linear-gradient(180deg, rgba(131, 137, 148, 0.96), rgba(97, 104, 116, 0.96));
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.38);
+  padding: 18px 18px 16px;
+  color: #f2f7ff;
+}
+
+.rebirth-close-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(224, 231, 243, 0.84);
+  background: rgba(83, 89, 100, 0.88);
+  color: #f8fbff;
+  font: 800 0.98rem "Sora", sans-serif;
+  cursor: pointer;
+}
+
+#rebirthTitle {
+  margin: 0 0 4px;
+  text-align: center;
+  color: #ffffff;
+  font: 700 1.62rem "Cinzel", Georgia, serif;
+}
+
+.rebirth-boost-info {
+  margin: 0 0 14px;
+  text-align: center;
+  color: #edf4ff;
+  font: 700 0.98rem "Sora", sans-serif;
+}
+
+.rebirth-requirements {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.rebirth-student-card {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 12px 8px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(205, 212, 225, 0.84);
+  background: linear-gradient(180deg, rgba(110, 116, 126, 0.9), rgba(88, 94, 104, 0.9));
+  transition:
+    filter 0.2s ease,
+    transform 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.rebirth-student-card.locked {
+  filter: grayscale(1);
+  opacity: 0.84;
+}
+
+.rebirth-student-card.ready {
+  filter: none;
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.88);
+  background: linear-gradient(180deg, rgba(142, 152, 168, 0.94), rgba(108, 114, 127, 0.92));
+}
+
+.rebirth-student-art {
+  position: relative;
+  width: 68px;
+  height: 78px;
+}
+
+.rebirth-student-hair,
+.rebirth-student-head,
+.rebirth-student-body {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: block;
+}
+
+.rebirth-student-hair {
+  top: 10px;
+  width: 44px;
+  height: 20px;
+  border-radius: 16px 16px 11px 11px;
+  background: linear-gradient(180deg, #6a4a31, #3f2a19);
+}
+
+.rebirth-student-head {
+  top: 18px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #e6b68e;
+}
+
+.rebirth-student-body {
+  top: 47px;
+  width: 38px;
+  height: 22px;
+  border-radius: 10px 10px 7px 7px;
+  background: linear-gradient(180deg, #637694, #3e4f67);
+}
+
+.rebirth-student-name {
+  color: #f5f9ff;
+  font: 700 0.94rem "Sora", sans-serif;
+}
+
+.rebirth-money-requirement {
+  margin: 0 0 12px;
+  padding: 11px 12px;
+  border-radius: 13px;
+  border: 1px solid rgba(204, 211, 223, 0.82);
+  background: rgba(95, 101, 112, 0.9);
+  color: #f4f8ff;
+  text-align: center;
+  font: 800 1rem "Sora", sans-serif;
+}
+
+.rebirth-money-requirement.ready {
+  border-color: rgba(176, 255, 194, 0.96);
+  background: linear-gradient(180deg, rgba(92, 176, 102, 0.94), rgba(64, 144, 76, 0.94));
+  color: #f6fff7;
+}
+
+.rebirth-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.rebirth-info-grid p {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(79, 85, 95, 0.9);
+  color: #f3f7ff;
+  font: 700 0.92rem "Sora", sans-serif;
+  text-align: center;
+}
+
+.rebirth-confirm-btn {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 13px;
+  border: 1px solid rgba(205, 211, 222, 0.9);
+  background: linear-gradient(180deg, rgba(129, 134, 143, 0.96), rgba(98, 103, 113, 0.96));
+  color: #eef4ff;
+  font: 800 1rem "Sora", sans-serif;
+  letter-spacing: 0.03em;
+  cursor: not-allowed;
+}
+
+.rebirth-confirm-btn.ready {
+  border-color: rgba(255, 235, 158, 0.96);
+  background: linear-gradient(180deg, rgba(255, 221, 89, 0.98), rgba(227, 182, 39, 0.98));
+  color: #3a2700;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(255, 207, 71, 0.28);
+}
+
+.rebirth-confirm-btn:disabled {
+  opacity: 1;
+}
+
+.sell-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 36;
+  display: grid;
+  place-items: center;
+  background: rgba(5, 15, 34, 0.48);
+  pointer-events: auto;
+}
+
+.sell-confirm-overlay.hidden {
+  display: none;
+}
+
+.adonis-shop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 37;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(6, 16, 30, 0.56);
+}
+
+.adonis-shop-overlay.hidden {
+  display: none;
+}
+
+.adonis-shop-card {
+  position: relative;
+  width: min(92vw, 720px);
+  border-radius: 18px;
+  border: 1px solid rgba(170, 205, 245, 0.78);
+  background: linear-gradient(180deg, rgba(78, 86, 98, 0.97), rgba(55, 62, 74, 0.97));
+  box-shadow: 0 24px 54px rgba(0, 0, 0, 0.42);
+  padding: 20px 20px 18px;
+}
+
+.adonis-shop-close-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  border: 1px solid rgba(230, 238, 249, 0.9);
+  background: rgba(71, 77, 88, 0.94);
+  color: #f8fbff;
+  font: 800 1rem "Sora", sans-serif;
+  cursor: pointer;
+}
+
+#adonisShopTitle {
+  margin: 0;
+  text-align: center;
+  color: #ffffff;
+  font: 700 1.72rem "Cinzel", Georgia, serif;
+}
+
+.adonis-shop-subtitle {
+  margin: 8px 0 14px;
+  text-align: center;
+  color: #edf3fb;
+  font: 600 0.98rem "Sora", sans-serif;
+}
+
+.adonis-shop-message {
+  margin: 0 0 14px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(217, 228, 244, 0.5);
+  background: rgba(24, 31, 41, 0.58);
+  color: #f4f8ff;
+  font: 700 0.95rem "Sora", sans-serif;
+  text-align: center;
+}
+
+.adonis-shop-message.hidden {
+  display: none;
+}
+
+.adonis-shop-message.is-success {
+  border-color: rgba(141, 255, 182, 0.82);
+  background: rgba(11, 58, 31, 0.62);
+  color: #bfffd5;
+}
+
+.adonis-shop-message.is-error {
+  border-color: rgba(255, 155, 155, 0.84);
+  background: rgba(67, 17, 17, 0.72);
+  color: #ffd0d0;
+}
+
+.adonis-shop-message.is-info {
+  border-color: rgba(177, 210, 255, 0.74);
+  background: rgba(22, 35, 58, 0.66);
+  color: #edf5ff;
+}
+
+.adonis-shop-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.adonis-shop-item {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-height: 228px;
+  padding: 15px 14px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(210, 220, 235, 0.42);
+  background: linear-gradient(180deg, rgba(93, 101, 113, 0.9), rgba(71, 77, 88, 0.92));
+}
+
+.adonis-shop-item.owned {
+  border-color: rgba(132, 255, 183, 0.6);
+  background: linear-gradient(180deg, rgba(73, 100, 76, 0.92), rgba(58, 83, 61, 0.94));
+}
+
+.adonis-shop-item.locked {
+  border-color: rgba(196, 201, 211, 0.42);
+  background: linear-gradient(180deg, rgba(80, 84, 92, 0.88), rgba(60, 64, 72, 0.9));
+}
+
+.adonis-shop-item-title {
+  margin: 0;
+  color: #ffffff;
+  font: 700 1.08rem "Sora", sans-serif;
+}
+
+.adonis-shop-item-price {
+  margin: 0;
+  color: #ffe68d;
+  font: 800 1rem "Sora", sans-serif;
+}
+
+.adonis-shop-item-description {
+  margin: 0;
+  color: #eff6ff;
+  font: 600 0.92rem/1.45 "Sora", sans-serif;
+}
+
+.adonis-shop-buy-btn {
+  align-self: end;
+  min-height: 44px;
+  border-radius: 11px;
+  border: 1px solid rgba(190, 223, 255, 0.9);
+  background: linear-gradient(135deg, #1e5bc8, #113e91);
+  color: #f7fbff;
+  font: 700 0.94rem "Sora", sans-serif;
+  cursor: pointer;
+}
+
+.adonis-shop-buy-btn:disabled {
+  cursor: default;
+  border-color: rgba(186, 243, 198, 0.72);
+  background: linear-gradient(135deg, #57aa68, #3b8050);
+  color: #f0fff2;
+}
+
+.adonis-shop-item.locked .adonis-shop-buy-btn:disabled {
+  border-color: rgba(180, 186, 197, 0.7);
+  background: linear-gradient(135deg, #747d8c, #555d69);
+  color: #eef3fb;
+}
+
+@media (max-width: 760px) {
+  .adonis-shop-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+.jacob-block-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: #000000;
+  cursor: pointer;
+}
+
+.jacob-block-overlay.hidden {
+  display: none;
+}
+
+.jacob-block-message {
+  color: #ffffff;
+  font: 800 clamp(1.5rem, 4vw, 2.4rem) "Sora", sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  text-align: center;
+  user-select: none;
+}
+
+.sell-confirm-card {
+  width: min(92vw, 540px);
+  border-radius: 14px;
+  border: 1px solid rgba(165, 210, 255, 0.82);
+  background: rgba(8, 22, 50, 0.95);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.46);
+  padding: 20px 20px 16px;
+  text-align: center;
+}
+
+#sellConfirmTitle {
+  margin: 0 0 8px;
+  color: #f2f9ff;
+  font: 700 1.25rem "Sora", sans-serif;
+}
+
+#sellConfirmText {
+  margin: 0 0 14px;
+  color: #dbecff;
+  font: 600 1rem "Sora", sans-serif;
+}
+
+.sell-confirm-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sell-confirm-btn {
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid rgba(171, 220, 255, 0.9);
+  color: #eaf6ff;
+  background: rgba(14, 37, 76, 0.95);
+  font: 700 1rem "Sora", sans-serif;
+  cursor: pointer;
+}
+
+.sell-confirm-btn.yes {
+  border-color: rgba(148, 255, 192, 0.95);
+  background: linear-gradient(120deg, #50d983, #35b866);
+  color: #082b17;
+}
+
+.sell-confirm-btn.no {
+  border-color: rgba(255, 178, 178, 0.95);
+  background: linear-gradient(120deg, #dc6666, #be4c4c);
+  color: #fff4f4;
+}
+
+#buildStamp {
+  position: fixed;
+  right: 12px;
+  top: 10px;
+  z-index: 21;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(180, 210, 255, 0.72);
+  background: rgba(6, 18, 39, 0.78);
+  color: #d9ecff;
+  font: 700 0.7rem "Sora", sans-serif;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+  user-select: none;
+}
+
+.menu-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background:
+    radial-gradient(circle at 86% 18%, rgba(109, 173, 255, 0.32) 0%, transparent 38%),
+    radial-gradient(circle at 14% 82%, rgba(239, 93, 93, 0.2) 0%, transparent 42%),
+    linear-gradient(156deg, #071429, #0e224b 50%, #123061);
+}
+
+.menu-screen.hidden {
+  display: none;
+}
+
+.menu-title {
+  margin: 0;
+  text-align: center;
+  padding-top: clamp(18px, 3.8vh, 36px);
+  font-family: "Cinzel", Georgia, serif;
+  letter-spacing: 0.05em;
+  line-height: 1.1;
+  font-size: clamp(2rem, 4.2vw, 3.4rem);
+  color: #f5fbff;
+  text-shadow:
+    0 3px 10px rgba(0, 0, 0, 0.35),
+    0 0 22px rgba(112, 202, 255, 0.2);
+}
+
+.menu-layout {
+  position: absolute;
+  inset: clamp(120px, 16vh, 168px) clamp(22px, 5vw, 68px) clamp(26px, 5vh, 48px);
+  display: grid;
+  grid-template-columns: minmax(160px, 240px) minmax(460px, 1fr) minmax(260px, 360px);
+  gap: clamp(14px, 2vw, 26px);
+  align-items: stretch;
+}
+
+.menu-nav {
+  display: grid;
+  gap: 10px;
+  align-content: center;
+}
+
+.menu-nav-btn {
+  min-height: 52px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: linear-gradient(170deg, rgba(13, 34, 70, 0.94), rgba(9, 24, 52, 0.9));
+  color: var(--text-main);
+  font: 700 1rem "Sora", sans-serif;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.menu-nav-btn:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-soft);
+}
+
+.menu-nav-btn.active {
+  color: #042335;
+  border-color: rgba(120, 238, 255, 0.95);
+  background: linear-gradient(120deg, #9af5ff, var(--btn-active));
+  box-shadow: 0 10px 22px rgba(77, 226, 255, 0.26);
+}
+
+.menu-main {
+  height: min(68vh, 700px);
+  max-height: calc(100vh - 230px);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--panel-border);
+  background:
+    linear-gradient(180deg, rgba(19, 47, 95, 0.16) 0%, rgba(8, 20, 43, 0.18) 100%),
+    var(--menu-bg);
+  box-shadow: var(--shadow-strong);
+  backdrop-filter: blur(10px);
+  padding: clamp(16px, 2.2vw, 26px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(132, 192, 255, 0.5) rgba(11, 27, 56, 0.5);
+}
+
+.menu-main::-webkit-scrollbar {
+  width: 10px;
+}
+
+.menu-main::-webkit-scrollbar-track {
+  background: rgba(8, 22, 48, 0.5);
+  border-radius: 999px;
+}
+
+.menu-main::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(130, 198, 255, 0.72), rgba(83, 146, 220, 0.74));
+  border-radius: 999px;
+}
+
+.menu-main.hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.menu-panel {
+  display: none;
+  min-height: 100%;
+  overflow: visible;
+}
+
+.menu-panel.active {
+  display: block;
+}
+
+.menu-panel h2 {
+  margin: 0 0 14px;
+  font: 700 1.35rem "Cinzel", Georgia, serif;
+  letter-spacing: 0.02em;
+}
+
+.avatar-preview-wrap {
+  margin: 12px 0 14px;
+  border: 1px solid rgba(148, 193, 250, 0.58);
+  border-radius: var(--radius-lg);
+  background: var(--surface-soft);
+  padding: 12px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+}
+
+.avatar-preview-wrap h3 {
+  margin: 0 0 10px;
+  font-size: 0.94rem;
+  font-weight: 700;
+  color: #d7ecff;
+}
+
+#avatarPreviewCanvas {
+  width: min(100%, 220px);
+  height: auto;
+  display: block;
+  border-radius: 11px;
+  border: 1px solid rgba(138, 187, 252, 0.66);
+  background: linear-gradient(180deg, #7cb7ff 0%, #9fd9ff 52%, #90cf8f 52%, #7abb72 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.save-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.save-slot {
+  border: 1px solid rgba(144, 186, 243, 0.72);
+  border-radius: var(--radius-md);
+  background: linear-gradient(170deg, rgba(17, 41, 84, 0.96), rgba(12, 30, 63, 0.9));
+  color: var(--text-main);
+  text-align: left;
+  padding: 12px 11px;
+  display: grid;
+  gap: 5px;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.save-slot:hover {
+  border-color: rgba(152, 235, 255, 0.95);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-soft);
+}
+
+.save-slot.selected {
+  border-color: rgba(127, 239, 255, 0.98);
+  box-shadow:
+    0 0 0 2px rgba(106, 236, 255, 0.25) inset,
+    0 10px 24px rgba(71, 201, 255, 0.18);
+}
+
+.save-slot-label {
+  font-weight: 700;
+  color: #8de9ff;
+  font-size: 0.87rem;
+}
+
+.save-slot-name,
+.save-slot-money,
+.save-slot-level {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+
+.selected-slot-label {
+  margin: 12px 0 14px;
+  color: #e3f2ff;
+  font-size: 0.9rem;
+}
+
+.primary-btn {
+  min-height: 44px;
+  border-radius: 11px;
+  border: 1px solid rgba(154, 244, 255, 0.9);
+  background: linear-gradient(120deg, #89ebff, #83f3cb);
+  color: #07263a;
+  font: 700 0.96rem "Sora", sans-serif;
+  cursor: pointer;
+  padding: 0 14px;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    filter 0.2s ease;
+}
+
+.primary-btn.play-btn {
+  background: linear-gradient(135deg, #7df18d, #3bcf5c);
+  border-color: rgba(162, 255, 170, 0.96);
+  color: #083117;
+}
+
+.primary-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(111, 240, 239, 0.28);
+  filter: saturate(1.08);
+}
+
+.play-validation-message {
+  margin: 10px 0 0;
+  min-height: 1.1em;
+  color: #ff8b8b;
+  font: 700 0.86rem "Sora", sans-serif;
+}
+
+.play-validation-message.hidden {
+  display: none;
+}
+
+.customizer {
+  margin-top: 16px;
+  border: 1px solid rgba(154, 194, 250, 0.58);
+  border-radius: var(--radius-lg);
+  background: var(--panel-bg);
+  padding: 14px;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.2);
+}
+
+.customizer h2 {
+  margin: 0 0 10px;
+  font-size: 1.08rem;
+  font-family: "Sora", sans-serif;
+}
+
+.username-field {
+  margin-bottom: 12px;
+}
+
+.username-field.is-attention {
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(92, 13, 13, 0.36);
+  border: 1px solid rgba(255, 112, 112, 0.82);
+  box-shadow: 0 0 0 2px rgba(255, 87, 87, 0.14);
+}
+
+.username-field.is-locked {
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(23, 39, 72, 0.58);
+  border: 1px solid rgba(142, 168, 212, 0.52);
+}
+
+.username-field.is-locked input[type="text"] {
+  opacity: 0.72;
+  cursor: not-allowed;
+  border-color: rgba(111, 134, 176, 0.78);
+  background: rgba(13, 28, 58, 0.9);
+}
+
+.customizer-field {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 11px;
+  font-size: 0.83rem;
+  color: #d8e8ff;
+}
+
+.customizer-field select,
+.customizer-field input[type="text"],
+.customizer-field input[type="color"],
+.customizer-field input[type="range"] {
+  width: 100%;
+  min-height: 36px;
+  border-radius: 9px;
+  border: 1px solid rgba(129, 174, 239, 0.82);
+  background: rgba(19, 40, 82, 0.94);
+  color: var(--text-main);
+  font-family: "Sora", sans-serif;
+  padding: 6px 10px;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.customizer-field input[type="color"] {
+  padding: 2px;
+}
+
+.customizer-range-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+#leoSmileValue {
+  min-width: 30px;
+  text-align: right;
+  font-weight: 700;
+}
+
+.customizer-random {
+  width: 100%;
+  min-height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(159, 243, 255, 0.88);
+  background: linear-gradient(120deg, #89ebff, #83f3cb);
+  color: #07263a;
+  font: 700 0.9rem "Sora", sans-serif;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.customizer-random:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 9px 18px rgba(126, 236, 255, 0.24);
+}
+
+.username-required-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 42;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(4, 10, 22, 0.76);
+  backdrop-filter: blur(10px);
+}
+
+.username-required-overlay.hidden {
+  display: none;
+}
+
+.username-required-card {
+  width: min(92vw, 440px);
+  border-radius: var(--radius-xl);
+  border: 1px solid rgba(168, 203, 255, 0.42);
+  background:
+    linear-gradient(180deg, rgba(20, 49, 98, 0.18) 0%, rgba(8, 20, 44, 0.12) 100%),
+    rgba(8, 20, 44, 0.96);
+  box-shadow: var(--shadow-strong);
+  padding: 22px;
+}
+
+.username-required-card h2 {
+  margin: 0 0 10px;
+  font: 700 1.35rem "Cinzel", Georgia, serif;
+}
+
+.username-required-text {
+  margin: 0 0 14px;
+  color: var(--text-muted);
+  font-size: 0.94rem;
+}
+
+.username-picker-field {
+  margin-bottom: 14px;
+}
+
+.username-required-message {
+  margin: 0 0 12px;
+  min-height: 1.1em;
+  color: #ff9c9c;
+  font: 700 0.88rem "Sora", sans-serif;
+}
+
+.username-required-message.hidden {
+  display: none;
+}
+
+.secondary-tab-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 58;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(4, 10, 22, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.secondary-tab-overlay.hidden {
+  display: none;
+}
+
+.secondary-tab-card {
+  width: min(92vw, 520px);
+  border-radius: var(--radius-xl);
+  border: 1px solid rgba(164, 203, 255, 0.42);
+  background: rgba(8, 20, 44, 0.96);
+  box-shadow: var(--shadow-strong);
+  padding: 24px;
+  text-align: center;
+}
+
+.secondary-tab-title {
+  color: #f4fbff;
+  font: 800 clamp(1.35rem, 3vw, 2rem) "Sora", sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.settings-field {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 12px;
+  font-size: 0.95rem;
+  color: #e4f1ff;
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: rgba(12, 30, 63, 0.72);
+  border: 1px solid rgba(141, 182, 241, 0.38);
+}
+
+.settings-field select,
+.settings-field input[type="range"] {
+  width: 100%;
+  min-height: 36px;
+  border-radius: 9px;
+  border: 1px solid rgba(133, 177, 240, 0.8);
+  background: rgba(18, 41, 86, 0.94);
+  color: var(--text-main);
+  font-family: "Sora", sans-serif;
+  padding: 6px 10px;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.settings-toggle {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.settings-toggle input[type="checkbox"] {
+  width: 24px;
+  height: 24px;
+}
+
+.sensitivity-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+#settingsSensitivityValue {
+  min-width: 30px;
+  text-align: right;
+  font-weight: 700;
+}
+
+#creditsPanel p {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(14, 34, 70, 0.74);
+  border: 1px solid rgba(140, 185, 245, 0.44);
+  color: #d9e9ff;
+  font-size: 0.98rem;
+}
+
+.menu-logo {
+  display: grid;
+  place-items: center;
+  padding: 10px;
+}
+
+.menu-logo-card {
+  width: min(100%, 350px);
+  border-radius: var(--radius-xl);
+  border: 1px solid rgba(174, 210, 255, 0.56);
+  background:
+    radial-gradient(circle at 20% 15%, rgba(119, 188, 255, 0.24), transparent 34%),
+    radial-gradient(circle at 82% 78%, rgba(230, 88, 88, 0.18), transparent 38%),
+    linear-gradient(170deg, rgba(11, 32, 71, 0.95), rgba(9, 21, 46, 0.94));
+  box-shadow:
+    0 18px 36px rgba(0, 0, 0, 0.38),
+    0 0 0 1px rgba(134, 183, 251, 0.16) inset;
+  padding: 12px 14px 14px;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: rgba(143, 232, 255, 0.96) !important;
+  box-shadow: 0 0 0 3px rgba(98, 220, 255, 0.24);
+}
+
+.school-emblem {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.menu-logo-text {
+  margin-top: 8px;
+  text-align: center;
+}
+
+.menu-logo-text h2 {
+  margin: 0;
+  color: #eaf4ff;
+  font: 700 clamp(1.2rem, 2.2vw, 1.55rem) "Cinzel", Georgia, serif;
+  letter-spacing: 0.03em;
+}
+
+.menu-logo-text p {
+  margin: 4px 0 0;
+  color: #acd8ff;
+  font: 700 0.83rem "Sora", sans-serif;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 1180px) {
+  .menu-layout {
+    inset: 112px 18px 18px;
+    grid-template-columns: minmax(140px, 200px) minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+  }
+
+  .menu-logo {
+    grid-column: 1 / -1;
+    max-height: none;
+  }
+
+  .menu-logo-card {
+    width: min(100%, 420px);
+  }
+}
+
+@media (max-width: 860px) {
+  .rebirth-dock {
+    right: 10px;
+    top: auto;
+    bottom: 84px;
+    transform: none;
+  }
+
+  .rebirth-open-btn {
+    min-width: 106px;
+    min-height: 44px;
+    font-size: 0.92rem;
+  }
+
+  .rebirth-card {
+    width: min(94vw, 520px);
+    padding: 16px 14px 14px;
+  }
+
+  .rebirth-requirements,
+  .rebirth-info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .menu-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr;
+    gap: 10px;
+    inset: 84px 10px 10px;
+  }
+
+  .menu-nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .menu-nav-btn {
+    min-height: 44px;
+    font-size: 0.86rem;
+  }
+
+  .menu-main {
+    min-height: 0;
+    max-height: calc(100vh - 276px);
+  }
+
+  .save-slot-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .menu-logo {
+    max-height: none;
+  }
+
+  .menu-logo-card {
+    width: min(100%, 340px);
+    padding: 10px 12px 12px;
+  }
+
+  .menu-logo-text p {
+    letter-spacing: 0.11em;
+  }
+}
