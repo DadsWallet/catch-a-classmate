@@ -488,6 +488,15 @@ const ONE_TIME_PROFILE_REBIRTH_GRANTS = [
     rebirthCount: 5,
   }),
 ];
+const ONE_TIME_PROFILE_MAXED_BASE_GRANT_STORAGE_KEY = "catchAClassmateOneTimeProfileMaxedBaseGrants";
+const ONE_TIME_PROFILE_MAXED_BASE_GRANTS = [
+  Object.freeze({
+    username: "Adonis",
+    rebirthCount: 7,
+    primaryNpcName: ESHDOG_MARLEY_NAME,
+    secondaryNpcName: FLETCHER_NAME,
+  }),
+];
 const SHOP_ITEM_SPEED_COIL = "speed_coil";
 const SHOP_ITEM_GRAVITY_COIL = "gravity_coil";
 const SHOP_ITEM_DUAL_COIL = "dual_coil";
@@ -736,7 +745,7 @@ const SOCKET_URL = (() => {
   }
   return "";
 })();
-const BUILD_ID = "20260322-463";
+const BUILD_ID = "20260322-464";
 
 const clock = new THREE.Clock();
 const velocity = new THREE.Vector3();
@@ -13631,6 +13640,48 @@ function saveOneTimeProfileRebirthGrantState(state) {
   }
 }
 
+function loadOneTimeProfileMaxedBaseGrantState() {
+  try {
+    const raw = window.localStorage.getItem(ONE_TIME_PROFILE_MAXED_BASE_GRANT_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    console.warn("Failed to load one-time profile maxed base grant state.", error);
+    return {};
+  }
+}
+
+function saveOneTimeProfileMaxedBaseGrantState(state) {
+  try {
+    window.localStorage.setItem(ONE_TIME_PROFILE_MAXED_BASE_GRANT_STORAGE_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.warn("Failed to save one-time profile maxed base grant state.", error);
+  }
+}
+
+function buildAlternatingRainbowOwnedClassmateEntries(totalPadCount, primaryNpcName, secondaryNpcName) {
+  const safeTotalPadCount = clampInt(
+    totalPadCount,
+    0,
+    BASE_UNLOCKED_INCOME_PAD_SLOTS + SECOND_FLOOR_TOTAL_PAD_SLOTS,
+    BASE_UNLOCKED_INCOME_PAD_SLOTS
+  );
+  const primaryName = getNpcRarityForName(primaryNpcName) ? primaryNpcName : FLETCHER_NAME;
+  const secondaryName = getNpcRarityForName(secondaryNpcName) ? secondaryNpcName : ESHDOG_MARLEY_NAME;
+  const entries = [];
+
+  for (let padIndex = 0; padIndex < safeTotalPadCount; padIndex += 1) {
+    entries.push({
+      npcName: padIndex % 2 === 0 ? primaryName : secondaryName,
+      variantId: VARIANT_RAINBOW,
+      padIndex,
+      pendingMoney: 0,
+    });
+  }
+
+  return entries;
+}
+
 function applyOneTimeProfileTopups() {
   if (!Array.isArray(saveSlots) || !saveSlots.length || !ONE_TIME_PROFILE_TOPUPS.length) {
     return false;
@@ -13729,6 +13780,90 @@ function applyOneTimeProfileRebirthGrants() {
 
   if (stateChanged) {
     saveOneTimeProfileRebirthGrantState(appliedState);
+  }
+  return changed;
+}
+
+function applyOneTimeProfileMaxedBaseGrants() {
+  if (!Array.isArray(saveSlots) || !saveSlots.length || !ONE_TIME_PROFILE_MAXED_BASE_GRANTS.length) {
+    return false;
+  }
+
+  const appliedState = loadOneTimeProfileMaxedBaseGrantState();
+  let changed = false;
+  let stateChanged = false;
+
+  for (const grant of ONE_TIME_PROFILE_MAXED_BASE_GRANTS) {
+    if (!grant || typeof grant.username !== "string") {
+      continue;
+    }
+
+    const safeUsername = sanitizeNameTag(grant.username);
+    if (!safeUsername || appliedState[safeUsername]) {
+      continue;
+    }
+
+    const targetRebirthCount = clampInt(grant.rebirthCount, 0, REBIRTH_STAGE_CONFIG.length, 0);
+    const targetRebirthMultiplier = getRebirthMultiplierForCount(targetRebirthCount);
+    const unlockedSecondFloorPadCount = getSecondFloorPadBonusForRebirthCount(targetRebirthCount);
+    const totalUnlockedPadCount = clampInt(
+      BASE_UNLOCKED_INCOME_PAD_SLOTS + unlockedSecondFloorPadCount,
+      0,
+      BASE_UNLOCKED_INCOME_PAD_SLOTS + SECOND_FLOOR_TOTAL_PAD_SLOTS,
+      BASE_UNLOCKED_INCOME_PAD_SLOTS
+    );
+    const grantedOwnedClassmates = buildAlternatingRainbowOwnedClassmateEntries(
+      totalUnlockedPadCount,
+      grant.primaryNpcName,
+      grant.secondaryNpcName
+    );
+
+    for (let i = 0; i < saveSlots.length; i += 1) {
+      const slot = saveSlots[i];
+      if (!slot || !slot.used) {
+        continue;
+      }
+      const slotUsername = sanitizeNameTag(slot.username || slot.name || (slot.avatar && slot.avatar.username) || "");
+      if (slotUsername !== safeUsername) {
+        continue;
+      }
+
+      if (slot.rebirthCount !== targetRebirthCount) {
+        slot.rebirthCount = targetRebirthCount;
+        changed = true;
+      }
+      if (slot.rebirthMultiplier !== targetRebirthMultiplier) {
+        slot.rebirthMultiplier = targetRebirthMultiplier;
+        changed = true;
+      }
+      if (slot.secondFloorUnlocked !== true) {
+        slot.secondFloorUnlocked = true;
+        changed = true;
+      }
+      if (slot.floorMigrationApplied !== true) {
+        slot.floorMigrationApplied = true;
+        changed = true;
+      }
+      if (slot.adonisResetApplied !== true) {
+        slot.adonisResetApplied = true;
+        changed = true;
+      }
+
+      const currentOwnedJson = JSON.stringify(sanitizeOwnedClassmateEntries(slot.ownedClassmates));
+      const grantedOwnedJson = JSON.stringify(grantedOwnedClassmates);
+      if (currentOwnedJson !== grantedOwnedJson) {
+        slot.ownedClassmates = grantedOwnedClassmates;
+        changed = true;
+      }
+
+      appliedState[safeUsername] = true;
+      stateChanged = true;
+      break;
+    }
+  }
+
+  if (stateChanged) {
+    saveOneTimeProfileMaxedBaseGrantState(appliedState);
   }
   return changed;
 }
@@ -13858,6 +13993,9 @@ function loadSaveSlotsFromStorage() {
     didMigrate = true;
   }
   if (applyAdonisProgressResetMigration()) {
+    didMigrate = true;
+  }
+  if (applyOneTimeProfileMaxedBaseGrants()) {
     didMigrate = true;
   }
   return didMigrate;
