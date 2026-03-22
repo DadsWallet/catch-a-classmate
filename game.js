@@ -736,7 +736,7 @@ const SOCKET_URL = (() => {
   }
   return "";
 })();
-const BUILD_ID = "20260322-448";
+const BUILD_ID = "20260322-463";
 
 const clock = new THREE.Clock();
 const velocity = new THREE.Vector3();
@@ -774,6 +774,8 @@ const tmpVariantColorB = new THREE.Color();
 const tmpVariantColorC = new THREE.Color();
 const worldColliders = [];
 const doorLaserColliders = [];
+const tmpSecondFloorStairLocal = new THREE.Vector3();
+const tmpSecondFloorStairWorld = new THREE.Vector3();
 const facePreviewCanvasCache = Object.create(null);
 const studentNpcs = [];
 const streetBasePads = [];
@@ -1594,6 +1596,9 @@ function createNeighborhoodMap() {
     );
     const stairRise = Math.max(0.2, (secondFloorDeckTopY - groundTopY) / stairStepCount);
     const stairColliderThickness = Math.max(0.12, Math.min(0.24, stairRise * 0.55));
+    const stairColliderWidth = Math.max(1.12, stairWidth - 0.18);
+    const stairColliderDepth = Math.max(0.2, Math.min(0.26, stairDepth * 0.28));
+    const stairColliderFrontOffsetZ = (stairDepth - stairColliderDepth) * 0.5 - 0.03;
     const signWidth = shopWidth * 0.34;
     const signHeight = playerHeightRef * 0.54;
     const signDepth = 0.16;
@@ -1896,19 +1901,20 @@ function createNeighborhoodMap() {
       );
       step.castShadow = true;
       step.receiveShadow = true;
+      step.userData.excludeWorldCollider = true;
       secondFloorGroup.add(step);
 
       const stepCollider = new THREE.Mesh(
-        new THREE.BoxGeometry(stairWidth, stairColliderThickness, stairDepth),
+        new THREE.BoxGeometry(stairColliderWidth, stairColliderThickness, stairColliderDepth),
         stairColliderMaterial
       );
       stepCollider.position.set(
         step.position.x,
         groundTopY + stepHeight - stairColliderThickness * 0.5,
-        step.position.z
+        step.position.z + stairColliderFrontOffsetZ
       );
       stepCollider.visible = false;
-      registerSecondFloorColliderMesh(stepCollider);
+      stepCollider.userData.excludeWorldCollider = true;
       secondFloorGroup.add(stepCollider);
     }
 
@@ -2036,6 +2042,15 @@ function createNeighborhoodMap() {
     baseGroup.userData.incomePadLabelSprites = incomePadLabelSprites;
     baseGroup.userData.secondFloorGroup = secondFloorGroup;
     baseGroup.userData.secondFloorCollidableMeshes = secondFloorCollidableMeshes;
+    baseGroup.userData.secondFloorStairWalkData = {
+      minX: Math.min(secondFloorStairWallX, secondFloorStairWallX + secondFloorStairSide * stairWidth) - 0.12,
+      maxX: Math.max(secondFloorStairWallX, secondFloorStairWallX + secondFloorStairSide * stairWidth) + 0.12,
+      frontZ: secondFloorOuterFrontZ + 0.04,
+      stairBackZ: secondFloorStairBackEdgeZ,
+      backZ: secondFloorOuterBackZ - 0.04,
+      groundY: groundTopY,
+      topY: secondFloorDeckTopY + tileThickness + 0.01,
+    };
     baseGroup.userData.interiorWallBounds = {
       minX: -shopWidth * 0.5 + wallThickness,
       maxX: shopWidth * 0.5 - wallThickness,
@@ -2452,6 +2467,58 @@ function resolveVerticalCollisions(previousFeetY, proposedFeetY) {
 
   player.position.y = proposedFeetY;
   return false;
+}
+
+function getSecondFloorStairAssistTargetY() {
+  for (let baseIndex = 0; baseIndex < streetBasePads.length; baseIndex += 1) {
+    const basePad = streetBasePads[baseIndex];
+    const base = basePad && basePad.base;
+    const userData = base && base.userData;
+    const stairData = userData && userData.secondFloorStairWalkData;
+    const secondFloorGroup = userData && userData.secondFloorGroup;
+    if (!base || !stairData || !secondFloorGroup || !secondFloorGroup.visible) {
+      continue;
+    }
+
+    tmpSecondFloorStairLocal.copy(player.position);
+    base.worldToLocal(tmpSecondFloorStairLocal);
+
+    if (
+      tmpSecondFloorStairLocal.x < stairData.minX - PLAYER_COLLIDER_RADIUS ||
+      tmpSecondFloorStairLocal.x > stairData.maxX + PLAYER_COLLIDER_RADIUS ||
+      tmpSecondFloorStairLocal.z > stairData.frontZ + PLAYER_COLLIDER_RADIUS * 0.35 ||
+      tmpSecondFloorStairLocal.z < stairData.backZ - PLAYER_COLLIDER_RADIUS * 0.35
+    ) {
+      continue;
+    }
+
+    let localTargetY = stairData.topY;
+    if (tmpSecondFloorStairLocal.z > stairData.stairBackZ) {
+      const riseDenominator = Math.max(0.001, stairData.frontZ - stairData.stairBackZ);
+      const progress = clamp((stairData.frontZ - tmpSecondFloorStairLocal.z) / riseDenominator, 0, 1);
+      localTargetY = stairData.groundY + (stairData.topY - stairData.groundY) * progress;
+    }
+
+    tmpSecondFloorStairWorld.set(tmpSecondFloorStairLocal.x, localTargetY, tmpSecondFloorStairLocal.z);
+    base.localToWorld(tmpSecondFloorStairWorld);
+    return tmpSecondFloorStairWorld.y;
+  }
+
+  return null;
+}
+
+function applySecondFloorStairWalkAssist() {
+  const targetY = getSecondFloorStairAssistTargetY();
+  if (!Number.isFinite(targetY)) {
+    return false;
+  }
+  if (velocity.y > 0.6 && player.position.y > targetY + 0.12) {
+    return false;
+  }
+
+  player.position.y = targetY;
+  velocity.y = 0;
+  return true;
 }
 
 function snapPlayerToGround(maxDrop) {
@@ -4018,6 +4085,49 @@ function attachEshdogMarleyHair(avatar, options = {}) {
   }
 
   avatar.userData.hairStyle = "eshdog_marley_hair";
+}
+
+function createEshdogMarleyBaseballCap() {
+  const capGroup = new THREE.Group();
+  capGroup.position.set(0, 0.18, 0.02);
+  const capMaterial = new THREE.MeshStandardMaterial({
+    color: ESHDOG_MARLEY_HAT_COLOR,
+    roughness: 0.86,
+    metalness: 0.01,
+  });
+
+  function addCapPiece(geometry, x, y, z, rotationX = 0, rotationY = 0, rotationZ = 0) {
+    const piece = new THREE.Mesh(geometry, capMaterial);
+    piece.position.set(x, y, z);
+    piece.rotation.set(rotationX, rotationY, rotationZ);
+    piece.castShadow = true;
+    piece.receiveShadow = true;
+    capGroup.add(piece);
+    return piece;
+  }
+
+  const crown = addCapPiece(
+    new THREE.SphereGeometry(0.78, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.62),
+    0,
+    0.28,
+    0.04,
+    0.06,
+    0,
+    0
+  );
+  crown.scale.set(1.06, 0.72, 0.98);
+
+  addCapPiece(
+    new THREE.BoxGeometry(0.86, 0.05, 0.36),
+    0,
+    0.04,
+    0.62,
+    -0.18,
+    0,
+    0
+  );
+
+  return capGroup;
 }
 
 function applyEshdogMarleyOutfit(avatar) {
@@ -9914,16 +10024,30 @@ function updateStudentNpcs(dt) {
           continue;
         }
         const baseName = String(npc.avatar.userData.npcBaseName || npc.avatar.userData.npcDisplayName || "").trim();
-        if (baseName !== ESHDOG_MARLEY_NAME || npc.purchaseState !== "forSale" || !npc.avatar.userData.isStreetWalker) {
+        if (npc.purchaseState !== "forSale" || !npc.avatar.userData.isStreetWalker || baseName === ESHDOG_MARLEY_NAME) {
           continue;
         }
         removeStudentNpcFromScene(npc);
       }
-      ensurePausedStreetNpcExists(FLETCHER_NAME, createPausedBaldLeoNpcSafe, {
+      ensurePausedStreetNpcExists(ESHDOG_MARLEY_NAME, createEshdogMarleyNpcSafe, {
         forwardOffsetZ: 8,
         walking: false,
       });
     } else {
+      for (let i = 0; i < studentNpcs.length; i += 1) {
+        const npc = studentNpcs[i];
+        if (!npc || !npc.avatar || !npc.avatar.userData) {
+          continue;
+        }
+        if (npc.purchaseState !== "forSale" || !npc.avatar.userData.isStreetWalker) {
+          continue;
+        }
+        if (!Number.isFinite(npc.speed) || npc.speed <= 0) {
+          npc.speed = LEO_PATROL_SPEED;
+          npc.direction = 1;
+          npc.maxZ = NPC_STREAM_END_Z;
+        }
+      }
       updateStreetNpcSpawner(dt);
     }
   } else {
@@ -11941,8 +12065,9 @@ function getNearestSellableNpcForActiveSlot() {
       continue;
     }
     const dx = student.avatar.position.x - player.position.x;
+    const dy = student.avatar.position.y - player.position.y;
     const dz = student.avatar.position.z - player.position.z;
-    const distance = Math.hypot(dx, dz);
+    const distance = Math.hypot(dx, dy, dz);
     if (distance > NPC_SELL_INTERACTION_DISTANCE || distance >= nearestDistance) {
       continue;
     }
@@ -13963,20 +14088,6 @@ function openPlayMenuPanel() {
   }
 }
 
-function handlePlayMenuButtonClick() {
-  const playPanelIsAlreadyOpen = Boolean(
-    menuMainEl &&
-      !menuMainEl.classList.contains("hidden") &&
-      playPanelEl &&
-      playPanelEl.classList.contains("active")
-  );
-  if (playPanelIsAlreadyOpen) {
-    loadSelectedSaveSlot();
-    return;
-  }
-  openPlayMenuPanel();
-}
-
 function activateMenuTab(panelId) {
   if (typeof panelId !== "string" || !panelId) {
     return;
@@ -13989,32 +14100,10 @@ function activateMenuTab(panelId) {
   lastMenuTabActivationTimeMs = now;
 
   if (panelId === "playPanel") {
-    handlePlayMenuButtonClick();
+    openPlayMenuPanel();
     return;
   }
   showMenuPanel(panelId);
-}
-
-function activateMenuTabAtPoint(clientX, clientY) {
-  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
-    return false;
-  }
-  for (const buttonEl of menuTabButtonEls) {
-    if (!buttonEl || typeof buttonEl.getBoundingClientRect !== "function") {
-      continue;
-    }
-    const rect = buttonEl.getBoundingClientRect();
-    if (
-      clientX >= rect.left &&
-      clientX <= rect.right &&
-      clientY >= rect.top &&
-      clientY <= rect.bottom
-    ) {
-      activateMenuTab(buttonEl.dataset.menuTab);
-      return true;
-    }
-  }
-  return false;
 }
 
 function bindMenuNavigation() {
@@ -14024,38 +14113,12 @@ function bindMenuNavigation() {
   menuNavigationBound = true;
 
   menuTabButtonEls.forEach((buttonEl) => {
-    buttonEl.addEventListener("click", () => {
+    buttonEl.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
       activateMenuTab(buttonEl.dataset.menuTab);
     });
   });
-
-  if (menuNavEl) {
-    menuNavEl.addEventListener(
-      "pointerup",
-      (event) => {
-        const targetButton = event.target instanceof Element ? event.target.closest("[data-menu-tab]") : null;
-        if (!targetButton) {
-          return;
-        }
-        event.preventDefault();
-        activateMenuTab(targetButton.dataset.menuTab);
-      },
-      true
-    );
-  }
-
-  if (menuScreenEl) {
-    const handleMenuScreenNavPointer = (event) => {
-      if (!menuScreenEl || menuScreenEl.classList.contains("hidden")) {
-        return;
-      }
-      if (activateMenuTabAtPoint(event.clientX, event.clientY)) {
-        event.preventDefault();
-      }
-    };
-    menuScreenEl.addEventListener("pointerup", handleMenuScreenNavPointer, true);
-    menuScreenEl.addEventListener("click", handleMenuScreenNavPointer, true);
-  }
 }
 
 function clearInputState() {
@@ -14891,16 +14954,21 @@ function updateMovement(dt) {
 
   const previousFeetY = player.position.y;
   velocity.y -= GRAVITY * gravityMultiplier * dt;
+  const stairAssistTargetY = getSecondFloorStairAssistTargetY();
+  const collisionFeetY = Number.isFinite(stairAssistTargetY) ? Math.max(previousFeetY, stairAssistTargetY) : previousFeetY;
 
   player.position.x += velocity.x * dt;
-  resolveHorizontalCollisions(previousFeetY);
+  resolveHorizontalCollisions(collisionFeetY);
   player.position.z += velocity.z * dt;
-  resolveHorizontalCollisions(previousFeetY);
+  resolveHorizontalCollisions(collisionFeetY);
 
   grounded = resolveVerticalCollisions(previousFeetY, player.position.y + velocity.y * dt);
   if (!grounded && velocity.y <= 0) {
     const snapRange = PLAYER_STEP_HEIGHT + Math.max(0.12, Math.abs(velocity.y) * dt + 0.08);
     grounded = snapPlayerToGround(snapRange);
+  }
+  if (applySecondFloorStairWalkAssist()) {
+    grounded = true;
   }
 
   if (player.position.y <= WORLD_GROUND_SURFACE_Y) {
