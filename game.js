@@ -46,6 +46,13 @@ const offlineIncomeTitleEl = document.getElementById("offlineIncomeTitle");
 const offlineIncomeTextEl = document.getElementById("offlineIncomeText");
 const offlineIncomeCloseBtnEl = document.getElementById("offlineIncomeCloseBtn");
 const rebirthFlashEl = document.getElementById("rebirthFlashOverlay");
+const indexDockEl = document.getElementById("indexDock");
+const indexOpenBtnEl = document.getElementById("indexOpenBtn");
+const indexOverlayEl = document.getElementById("indexOverlay");
+const indexCloseBtnEl = document.getElementById("indexCloseBtn");
+const indexProgressTextEl = document.getElementById("indexProgressText");
+const indexBonusTextEl = document.getElementById("indexBonusText");
+const indexGridEl = document.getElementById("indexGrid");
 const rebirthDockEl = document.getElementById("rebirthDock");
 const rebirthOpenBtnEl = document.getElementById("rebirthOpenBtn");
 const rebirthOverlayEl = document.getElementById("rebirthOverlay");
@@ -411,6 +418,22 @@ const NPC_VARIANT_ROLL_ORDER = Object.freeze([
   VARIANT_DIAMOND,
   VARIANT_RAINBOW,
 ]);
+const INDEX_TRACKED_CHARACTER_NAMES = Object.freeze([
+  LEO_NAME,
+  ZIGGY_NAME,
+  NATE_NAME,
+  HENDRIX_NAME,
+  LEDGER_NAME,
+  CHARLIE_NAME,
+  OSCAR_NAME,
+  BEAU_NAME,
+  CHRISTIAN_NAME,
+  VINCE_NAME,
+]);
+const INDEX_COMPLETION_VARIANT_IDS = Object.freeze([...NPC_VARIANT_ROLL_ORDER]);
+const INDEX_CHARACTER_COMPLETION_BONUS = 0.1;
+const INDEX_FULL_COMPLETION_BONUS = 0.5;
+const INDEX_TOTAL_COMBINATIONS = INDEX_TRACKED_CHARACTER_NAMES.length * INDEX_COMPLETION_VARIANT_IDS.length;
 const NPC_RARITY_SPAWN_WEIGHTS = Object.freeze([
   Object.freeze({ rarity: RARITY_COMMON, chance: 49 }),
   Object.freeze({ rarity: RARITY_UNCOMMON, chance: 29 }),
@@ -745,7 +768,7 @@ const SOCKET_URL = (() => {
   }
   return "";
 })();
-const BUILD_ID = "20260322-464";
+const BUILD_ID = "20260322-465";
 
 const clock = new THREE.Clock();
 const velocity = new THREE.Vector3();
@@ -819,6 +842,7 @@ let secondaryTabBlocked = false;
 let suspendAvatarPreviewSync = false;
 let activeTouchCount = 0;
 let twoFingerLookActive = false;
+let indexUiSignature = "";
 let spawnTimerPanelSprite = null;
 let spawnTimerPanelKey = "";
 let spawnTimerTexture = null;
@@ -7239,6 +7263,11 @@ function finalizeStreetNpcPurchase(student) {
   student.avatar.userData.isStreetWalker = false;
   student.avatar.userData.isPurchasedNpc = true;
   student.avatar.userData.purchaseState = "walkingToPad";
+  grantIndexCollectedEntry(
+    activeSlot,
+    student.avatar.userData.npcBaseName || student.avatar.userData.npcDisplayName || "",
+    student.avatar.userData.npcVariantId
+  );
   updateNpcInfoTag(student);
   if (Array.isArray(freePad.basePad.incomePadOccupants) && freePad.padIndex >= 0 && freePad.padIndex < freePad.basePad.incomePadOccupants.length) {
     freePad.basePad.incomePadOccupants[freePad.padIndex] = student.id;
@@ -7608,6 +7637,147 @@ function getVariantAdjustedEconomy(baseName, baseRarity, variantId) {
       baseEconomy.moneyPerSecond
     ),
   };
+}
+
+function isIndexTrackedCharacterName(name) {
+  const safeName = typeof name === "string" ? name.trim() : "";
+  return INDEX_TRACKED_CHARACTER_NAMES.includes(safeName);
+}
+
+function buildIndexCollectedKey(npcName, variantId) {
+  const safeNpcName = typeof npcName === "string" ? npcName.trim() : "";
+  if (!isIndexTrackedCharacterName(safeNpcName)) {
+    return "";
+  }
+  const variant = getNpcVariantDefinition(variantId);
+  return `${safeNpcName}_${variant.label}`;
+}
+
+function normalizeIndexCollectedKey(value) {
+  const safeValue = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!safeValue) {
+    return "";
+  }
+  for (let characterIndex = 0; characterIndex < INDEX_TRACKED_CHARACTER_NAMES.length; characterIndex += 1) {
+    const npcName = INDEX_TRACKED_CHARACTER_NAMES[characterIndex];
+    for (let variantIndex = 0; variantIndex < INDEX_COMPLETION_VARIANT_IDS.length; variantIndex += 1) {
+      const key = buildIndexCollectedKey(npcName, INDEX_COMPLETION_VARIANT_IDS[variantIndex]);
+      if (safeValue === key.toLowerCase()) {
+        return key;
+      }
+    }
+  }
+  return "";
+}
+
+function getIndexCollectedKeySortValue(key) {
+  const safeKey = normalizeIndexCollectedKey(key);
+  if (!safeKey) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  for (let characterIndex = 0; characterIndex < INDEX_TRACKED_CHARACTER_NAMES.length; characterIndex += 1) {
+    const npcName = INDEX_TRACKED_CHARACTER_NAMES[characterIndex];
+    for (let variantIndex = 0; variantIndex < INDEX_COMPLETION_VARIANT_IDS.length; variantIndex += 1) {
+      if (safeKey === buildIndexCollectedKey(npcName, INDEX_COMPLETION_VARIANT_IDS[variantIndex])) {
+        return characterIndex * INDEX_COMPLETION_VARIANT_IDS.length + variantIndex;
+      }
+    }
+  }
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function sanitizeIndexCollected(rawEntries) {
+  if (!Array.isArray(rawEntries)) {
+    return [];
+  }
+  const safeEntries = [];
+  const seenEntries = new Set();
+  for (let i = 0; i < rawEntries.length; i += 1) {
+    const safeKey = normalizeIndexCollectedKey(rawEntries[i]);
+    if (!safeKey || seenEntries.has(safeKey)) {
+      continue;
+    }
+    seenEntries.add(safeKey);
+    safeEntries.push(safeKey);
+  }
+  safeEntries.sort((a, b) => getIndexCollectedKeySortValue(a) - getIndexCollectedKeySortValue(b));
+  return safeEntries;
+}
+
+function getSlotIndexCollected(slot) {
+  if (!slot) {
+    return [];
+  }
+  return sanitizeIndexCollected(slot.indexCollected);
+}
+
+function grantIndexCollectedEntry(slot, npcName, variantId) {
+  if (!slot) {
+    return false;
+  }
+  const entryKey = buildIndexCollectedKey(npcName, variantId);
+  if (!entryKey) {
+    return false;
+  }
+  const safeEntries = getSlotIndexCollected(slot);
+  if (safeEntries.includes(entryKey)) {
+    slot.indexCollected = safeEntries;
+    return false;
+  }
+  safeEntries.push(entryKey);
+  safeEntries.sort((a, b) => getIndexCollectedKeySortValue(a) - getIndexCollectedKeySortValue(b));
+  slot.indexCollected = safeEntries;
+  return true;
+}
+
+function getSlotIndexCollectedCount(slot) {
+  return getSlotIndexCollected(slot).length;
+}
+
+function getSlotIndexCompletionCountForCharacter(slot, npcName) {
+  const safeNpcName = typeof npcName === "string" ? npcName.trim() : "";
+  if (!isIndexTrackedCharacterName(safeNpcName)) {
+    return 0;
+  }
+  const collectedEntries = new Set(getSlotIndexCollected(slot));
+  let completionCount = 0;
+  for (let i = 0; i < INDEX_COMPLETION_VARIANT_IDS.length; i += 1) {
+    if (collectedEntries.has(buildIndexCollectedKey(safeNpcName, INDEX_COMPLETION_VARIANT_IDS[i]))) {
+      completionCount += 1;
+    }
+  }
+  return completionCount;
+}
+
+function getSlotCompletedIndexCharacterCount(slot) {
+  let completedCount = 0;
+  for (let i = 0; i < INDEX_TRACKED_CHARACTER_NAMES.length; i += 1) {
+    if (getSlotIndexCompletionCountForCharacter(slot, INDEX_TRACKED_CHARACTER_NAMES[i]) >= INDEX_COMPLETION_VARIANT_IDS.length) {
+      completedCount += 1;
+    }
+  }
+  return completedCount;
+}
+
+function getSlotIndexBonusMultiplier(slot) {
+  const completedCharacterCount = getSlotCompletedIndexCharacterCount(slot);
+  let bonus = completedCharacterCount * INDEX_CHARACTER_COMPLETION_BONUS;
+  if (getSlotIndexCollectedCount(slot) >= INDEX_TOTAL_COMBINATIONS) {
+    bonus += INDEX_FULL_COMPLETION_BONUS;
+  }
+  return Number(bonus.toFixed(4));
+}
+
+function getSlotCashMultiplier(slot) {
+  return Number((getSlotRebirthMultiplier(slot) + getSlotIndexBonusMultiplier(slot)).toFixed(4));
+}
+
+function getIndexUiSignature(slot) {
+  if (!slot) {
+    return "no-slot";
+  }
+  const collectedEntries = getSlotIndexCollected(slot);
+  return `${collectedEntries.join("|")}__${getSlotIndexBonusMultiplier(slot).toFixed(4)}`;
 }
 
 function getNpcVariantRollWeight(variantId, slot = getActiveSaveSlot()) {
@@ -10548,6 +10718,7 @@ function updateLeoPurchaseAndIncome(dt) {
   if (leoBuyHoldTimer >= LEO_HOLD_TO_BUY_SECONDS) {
     activeSlot.money = clampInt(activeSlot.money - LEO_COST, 0, MAX_CURRENCY_VALUE, activeSlot.money);
     setLeoState(LEO_STATE_WALK_TO_PAD, false);
+    grantIndexCollectedEntry(activeSlot, LEO_NAME, VARIANT_NORMAL);
     saveSaveSlotsToStorage();
     renderSaveSlotsUi();
     leoBuyHoldTimer = 0;
@@ -10603,7 +10774,7 @@ function updateNpcBuyingAndIncome(dt) {
   }
 
   ensureSlotBaseAssignment(activeSlot, activeSaveSlotIndex);
-  const rebirthMultiplier = getSlotRebirthMultiplier(activeSlot);
+  const cashMultiplier = getSlotCashMultiplier(activeSlot);
 
   for (const student of studentNpcs) {
     if (!student || student.purchaseState !== "generating" || !student.avatar || !student.avatar.userData) {
@@ -10616,7 +10787,7 @@ function updateNpcBuyingAndIncome(dt) {
     student.incomeAccumulator = Math.max(0, (student.incomeAccumulator || 0) + dt);
     while (student.incomeAccumulator >= 1) {
       student.incomeAccumulator -= 1;
-      const exactPayout = incomePerSecond * rebirthMultiplier + (student.incomePayoutCarry || 0);
+      const exactPayout = incomePerSecond * cashMultiplier + (student.incomePayoutCarry || 0);
       const wholePayout = Math.floor(exactPayout);
       student.incomePayoutCarry = Math.max(0, exactPayout - wholePayout);
       if (wholePayout > 0) {
@@ -11168,11 +11339,16 @@ function isOfflineIncomePopupOpen() {
   return Boolean(offlineIncomeOverlayEl && !offlineIncomeOverlayEl.classList.contains("hidden"));
 }
 
+function isIndexOverlayOpen() {
+  return Boolean(indexOverlayEl && !indexOverlayEl.classList.contains("hidden"));
+}
+
 function isBlockingGameplayOverlayOpen() {
   return (
     isSellConfirmOpen() ||
     isRebirthOverlayOpen() ||
     isAdonisShopOpen() ||
+    isIndexOverlayOpen() ||
     isOfflineIncomePopupOpen() ||
     isUsernameRequiredOverlayOpen() ||
     isSecondaryTabBlocked()
@@ -11237,6 +11413,148 @@ function setAdonisShopMessage(text, tone = "info", duration = 2.6) {
   adonisShopMessageTone = tone === "success" || tone === "error" ? tone : "info";
   adonisShopMessageTimer = adonisShopMessageText ? Math.max(0, Number(duration) || 0) : 0;
   updateAdonisShopMessageDisplay();
+}
+
+function closeIndexOverlay() {
+  if (indexOverlayEl) {
+    indexOverlayEl.classList.add("hidden");
+  }
+  indexUiSignature = "";
+}
+
+function renderIndexOverlay() {
+  const activeSlot = getActiveSaveSlot();
+  if (!activeSlot) {
+    if (indexProgressTextEl) {
+      indexProgressTextEl.textContent = `0/${INDEX_TOTAL_COMBINATIONS} collected`;
+    }
+    if (indexBonusTextEl) {
+      indexBonusTextEl.textContent = "Permanent bonus: +0.00x";
+    }
+    if (indexGridEl) {
+      indexGridEl.replaceChildren();
+    }
+    indexUiSignature = getIndexUiSignature(activeSlot);
+    return;
+  }
+
+  const collectedEntries = getSlotIndexCollected(activeSlot);
+  const collectedEntrySet = new Set(collectedEntries);
+  const totalCollected = collectedEntries.length;
+  const totalBonus = getSlotIndexBonusMultiplier(activeSlot);
+
+  if (indexProgressTextEl) {
+    indexProgressTextEl.textContent = `${totalCollected}/${INDEX_TOTAL_COMBINATIONS} collected`;
+  }
+  if (indexBonusTextEl) {
+    indexBonusTextEl.textContent = `Permanent bonus: +${totalBonus.toFixed(2)}x`;
+  }
+  if (!indexGridEl) {
+    indexUiSignature = getIndexUiSignature(activeSlot);
+    return;
+  }
+
+  indexGridEl.replaceChildren();
+
+  for (let characterIndex = 0; characterIndex < INDEX_TRACKED_CHARACTER_NAMES.length; characterIndex += 1) {
+    const npcName = INDEX_TRACKED_CHARACTER_NAMES[characterIndex];
+    const npcRarity = getNpcRarityForName(npcName);
+    const rarityColor = getNpcRarityTextColor(npcRarity);
+    const completionCount = getSlotIndexCompletionCountForCharacter(activeSlot, npcName);
+    const completionPercent = Math.round((completionCount / INDEX_COMPLETION_VARIANT_IDS.length) * 100);
+
+    const rowEl = document.createElement("section");
+    rowEl.className = "index-row";
+
+    const rowHeaderEl = document.createElement("div");
+    rowHeaderEl.className = "index-row-header";
+
+    const rowNameEl = document.createElement("div");
+    rowNameEl.className = "index-row-name";
+    rowNameEl.textContent = npcName;
+    rowNameEl.style.color = rarityColor;
+
+    const rowProgressEl = document.createElement("div");
+    rowProgressEl.className = "index-row-progress";
+    rowProgressEl.textContent = `${npcName}: ${completionCount}/${INDEX_COMPLETION_VARIANT_IDS.length} (${completionPercent}%)`;
+
+    rowHeaderEl.append(rowNameEl, rowProgressEl);
+
+    const rowCellsEl = document.createElement("div");
+    rowCellsEl.className = "index-row-cells";
+
+    for (let variantIndex = 0; variantIndex < INDEX_COMPLETION_VARIANT_IDS.length; variantIndex += 1) {
+      const variantId = INDEX_COMPLETION_VARIANT_IDS[variantIndex];
+      const variant = getNpcVariantDefinition(variantId);
+      const entryKey = buildIndexCollectedKey(npcName, variantId);
+      const isCollected = collectedEntrySet.has(entryKey);
+
+      const cellEl = document.createElement("article");
+      cellEl.className = `index-cell ${isCollected ? "is-collected" : "is-locked"}`;
+      cellEl.style.setProperty("--index-accent", rarityColor);
+
+      const nameEl = document.createElement("div");
+      nameEl.className = "index-cell-name";
+      nameEl.textContent = npcName;
+
+      const variantEl = document.createElement("div");
+      variantEl.className = "index-cell-variant";
+      variantEl.textContent = variant.label;
+
+      const stateEl = document.createElement("div");
+      stateEl.className = "index-cell-state";
+      stateEl.textContent = isCollected ? "Collected" : "Locked";
+
+      cellEl.append(nameEl, variantEl, stateEl);
+
+      if (!isCollected) {
+        const lockEl = document.createElement("span");
+        lockEl.className = "index-lock-icon";
+        lockEl.setAttribute("aria-hidden", "true");
+        lockEl.textContent = "🔒";
+        cellEl.appendChild(lockEl);
+      }
+
+      rowCellsEl.appendChild(cellEl);
+    }
+
+    rowEl.append(rowHeaderEl, rowCellsEl);
+    indexGridEl.appendChild(rowEl);
+  }
+
+  indexUiSignature = getIndexUiSignature(activeSlot);
+}
+
+function openIndexOverlay() {
+  if (!indexOverlayEl || !running || isMenuOpen() || !getActiveSaveSlot()) {
+    return;
+  }
+  closeSellConfirmModal();
+  closeRebirthOverlay();
+  closeAdonisShop();
+  clearInputState();
+  setInteractionPrompt("");
+  renderIndexOverlay();
+  indexOverlayEl.classList.remove("hidden");
+}
+
+function updateIndexUi() {
+  const shouldShowDock = Boolean(running && !isMenuOpen() && !isSecondaryTabBlocked() && getActiveSaveSlot());
+  if (indexDockEl) {
+    indexDockEl.classList.toggle("hidden", !shouldShowDock);
+  }
+  if (!shouldShowDock) {
+    closeIndexOverlay();
+    return;
+  }
+  if (!isIndexOverlayOpen()) {
+    return;
+  }
+  const activeSlot = getActiveSaveSlot();
+  const nextSignature = getIndexUiSignature(activeSlot);
+  if (nextSignature !== indexUiSignature) {
+    renderIndexOverlay();
+  }
 }
 
 function updateAdonisShopMessage(dt) {
@@ -13283,6 +13601,7 @@ function createEmptySaveSlot(index) {
     leoPurchased: false,
     leoGenerating: false,
     shopUnlocks: getDefaultAdonisShopUnlocks(),
+    indexCollected: [],
     ownedClassmates: [],
   };
 }
@@ -13359,8 +13678,8 @@ function calculateOfflineIncomeAward(slot, currentTimestampMs = Date.now()) {
   if (offlineSeconds <= 0) {
     return null;
   }
-  const rebirthMultiplier = getSlotRebirthMultiplier(slot);
-  const offlineEarnings = clampCurrencyValue(totalIncomePerSecond * rebirthMultiplier * offlineSeconds, 0);
+  const cashMultiplier = getSlotCashMultiplier(slot);
+  const offlineEarnings = clampCurrencyValue(totalIncomePerSecond * cashMultiplier * offlineSeconds, 0);
   if (offlineEarnings <= 0) {
     return null;
   }
@@ -13470,6 +13789,7 @@ function sanitizeSaveSlot(rawSlot, index) {
     leoPurchased: Boolean(rawSlot.leoPurchased),
     leoGenerating: Boolean(rawSlot.leoPurchased) && Boolean(rawSlot.leoGenerating),
     shopUnlocks: sanitizeAdonisShopUnlocks(rawSlot.shopUnlocks),
+    indexCollected: sanitizeIndexCollected(rawSlot.indexCollected),
     ownedClassmates: sanitizeOwnedClassmateEntries(rawSlot.ownedClassmates),
   };
 }
@@ -15273,6 +15593,7 @@ function updateHud() {
     const moneyAmount = sourceSlot ? clampInt(sourceSlot.money, 0, MAX_CURRENCY_VALUE, 0) : 0;
     moneyHudEl.textContent = `$${moneyAmount.toLocaleString("en-US")}`;
   }
+  updateIndexUi();
 }
 
 function updateRebirthUi() {
@@ -15485,6 +15806,7 @@ function start() {
   closeSellConfirmModal();
   closeRebirthOverlay();
   closeAdonisShop();
+  closeIndexOverlay();
   closeOfflineIncomePopup();
   setInteractionPrompt("");
   const leoNpc = getLeoNpc();
@@ -15512,6 +15834,16 @@ if (adonisShopCloseBtnEl) {
 if (offlineIncomeCloseBtnEl) {
   offlineIncomeCloseBtnEl.addEventListener("click", () => {
     closeOfflineIncomePopup();
+  });
+}
+if (indexOpenBtnEl) {
+  indexOpenBtnEl.addEventListener("click", () => {
+    openIndexOverlay();
+  });
+}
+if (indexCloseBtnEl) {
+  indexCloseBtnEl.addEventListener("click", () => {
+    closeIndexOverlay();
   });
 }
 if (rebirthOpenBtnEl) {
@@ -15547,6 +15879,13 @@ if (offlineIncomeOverlayEl) {
   offlineIncomeOverlayEl.addEventListener("click", (event) => {
     if (event.target === offlineIncomeOverlayEl) {
       closeOfflineIncomePopup();
+    }
+  });
+}
+if (indexOverlayEl) {
+  indexOverlayEl.addEventListener("click", (event) => {
+    if (event.target === indexOverlayEl) {
+      closeIndexOverlay();
     }
   });
 }
@@ -15595,6 +15934,13 @@ window.addEventListener("keydown", (event) => {
   if (isOfflineIncomePopupOpen()) {
     if (key === "escape" || key === "enter" || key === " ") {
       closeOfflineIncomePopup();
+    }
+    event.preventDefault();
+    return;
+  }
+  if (isIndexOverlayOpen()) {
+    if (key === "escape" || key === "i") {
+      closeIndexOverlay();
     }
     event.preventDefault();
     return;

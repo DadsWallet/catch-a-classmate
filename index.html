@@ -13,7 +13,7 @@
       href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Sora:wght@400;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260322-464" />
+    <link rel="stylesheet" href="styles.css?v=20260322-465" />
   </head>
   <body>
     <canvas id="gameCanvas" aria-label="3D game view"></canvas>
@@ -34,8 +34,20 @@
       </div>
     </div>
     <div id="rebirthFlashOverlay" class="rebirth-flash-overlay" aria-hidden="true"></div>
+    <div id="indexDock" class="index-dock hidden" aria-label="Index menu">
+      <button id="indexOpenBtn" type="button" class="index-open-btn">Index</button>
+    </div>
     <div id="rebirthDock" class="rebirth-dock hidden" aria-label="Rebirth menu">
       <button id="rebirthOpenBtn" type="button" class="rebirth-open-btn">Rebirth</button>
+    </div>
+    <div id="indexOverlay" class="index-overlay hidden" aria-live="polite" aria-modal="true" role="dialog">
+      <div class="index-card">
+        <button id="indexCloseBtn" type="button" class="index-close-btn" aria-label="Close index">x</button>
+        <h2 id="indexTitle">Index</h2>
+        <p id="indexProgressText" class="index-progress-text">0/50 collected</p>
+        <p id="indexBonusText" class="index-bonus-text">Permanent bonus: +0.00x</p>
+        <div id="indexGrid" class="index-grid" aria-label="Index collection grid"></div>
+      </div>
     </div>
     <div id="rebirthOverlay" class="rebirth-overlay hidden" aria-live="polite" aria-modal="true" role="dialog">
       <div class="rebirth-card">
@@ -294,6 +306,6 @@
     <script>
       window.SOCKET_URL = "https://catch-a-classmate.onrender.com";
     </script>
-    <script src="game.js?v=20260322-464"></script>
+    <script src="game.js?v=20260322-465"></script>
   </body>
 </html>
