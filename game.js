@@ -313,8 +313,8 @@ const NPC_BASE_ECONOMY_BY_NAME = Object.freeze({
   [ZIGGY_NAME]: Object.freeze({ cost: 1500, moneyPerSecond: 30 }),
   [NATE_NAME]: Object.freeze({ cost: 7000, moneyPerSecond: 70 }),
   [HENDRIX_NAME]: Object.freeze({ cost: 9000, moneyPerSecond: 90 }),
-  [LEDGER_NAME]: Object.freeze({ cost: 38000, moneyPerSecond: 190 }),
-  [CHARLIE_NAME]: Object.freeze({ cost: 44000, moneyPerSecond: 220 }),
+  [LEDGER_NAME]: Object.freeze({ cost: 44000, moneyPerSecond: 220 }),
+  [CHARLIE_NAME]: Object.freeze({ cost: 38000, moneyPerSecond: 190 }),
   [OSCAR_NAME]: Object.freeze({ cost: 232000, moneyPerSecond: 580 }),
   [BEAU_NAME]: Object.freeze({ cost: 256000, moneyPerSecond: 640 }),
   [CHRISTIAN_NAME]: Object.freeze({ cost: 1520000, moneyPerSecond: 1900 }),
@@ -423,8 +423,8 @@ const INDEX_TRACKED_CHARACTER_NAMES = Object.freeze([
   ZIGGY_NAME,
   NATE_NAME,
   HENDRIX_NAME,
-  LEDGER_NAME,
   CHARLIE_NAME,
+  LEDGER_NAME,
   OSCAR_NAME,
   BEAU_NAME,
   CHRISTIAN_NAME,
@@ -640,7 +640,7 @@ const REBIRTH_STAGE_CONFIG = Object.freeze([
     title: "Hallway Monitor",
     requiredNpcAName: HENDRIX_NAME,
     requiredNpcACount: 1,
-    requiredNpcBName: LEDGER_NAME,
+    requiredNpcBName: CHARLIE_NAME,
     requiredNpcBCount: 1,
     requiredMoney: 2000000,
     nextMultiplier: 3,
@@ -654,7 +654,7 @@ const REBIRTH_STAGE_CONFIG = Object.freeze([
   Object.freeze({
     id: 3,
     title: "Class President",
-    requiredNpcAName: CHARLIE_NAME,
+    requiredNpcAName: LEDGER_NAME,
     requiredNpcACount: 1,
     requiredNpcBName: OSCAR_NAME,
     requiredNpcBCount: 1,
@@ -768,7 +768,7 @@ const SOCKET_URL = (() => {
   }
   return "";
 })();
-const BUILD_ID = "20260322-465";
+const BUILD_ID = "20260323-467";
 
 const clock = new THREE.Clock();
 const velocity = new THREE.Vector3();
@@ -12208,6 +12208,29 @@ function moveSoldNpcToStreamStart(student) {
   updateNpcInfoTag(student);
 }
 
+function removeSoldNpcFromWorld(student) {
+  if (!student || !student.avatar || !student.avatar.userData) {
+    return;
+  }
+  clearNetworkStreetMetadata(student);
+  student.purchaseState = "removed";
+  student.assignedBaseIndex = -1;
+  student.assignedPadIndex = -1;
+  student.incomeAccumulator = 0;
+  student.incomePayoutCarry = 0;
+  student.pendingMoney = 0;
+  student.avatar.userData.isStreetWalker = false;
+  student.avatar.userData.isPurchasedNpc = false;
+  student.avatar.userData.purchaseState = "removed";
+  if (student.avatar.parent) {
+    student.avatar.parent.remove(student.avatar);
+  }
+  const studentIndex = studentNpcs.indexOf(student);
+  if (studentIndex >= 0) {
+    studentNpcs.splice(studentIndex, 1);
+  }
+}
+
 function getOwnedNpcCountForActiveSlot(targetNpcName) {
   const activeBaseIndex = getActivePlayerBaseIndex();
   const safeTargetNpcName = String(targetNpcName || "").trim();
@@ -12364,7 +12387,10 @@ function confirmSellSelectedClassmate() {
     }
   }
 
-  moveSoldNpcToStreamStart(student);
+  removeSoldNpcFromWorld(student);
+  rebuildIncomePadOccupancy();
+  refreshIncomePadAvailabilityVisuals();
+  updateIncomePadMoneyLabels();
   npcSellHoldTimer = 0;
   npcSellTargetId = 0;
   closeSellConfirmModal();
