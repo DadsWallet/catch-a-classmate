@@ -6,9 +6,11 @@ const hpValueEl = document.getElementById("hpValue");
 const scoreValueEl = document.getElementById("scoreValue");
 const chapterValueEl = document.getElementById("chapterValue");
 const menuScreenEl = document.getElementById("menuScreen");
+const menuNavEl = document.querySelector(".menu-nav");
 const menuMainEl = document.querySelector(".menu-main");
 const menuTabButtonEls = Array.from(document.querySelectorAll("[data-menu-tab]"));
 const menuPanelEls = Array.from(document.querySelectorAll(".menu-panel"));
+const playPanelEl = document.getElementById("playPanel");
 const saveSlotButtonEls = Array.from(document.querySelectorAll(".save-slot"));
 const selectedSlotLabelEl = document.getElementById("selectedSlotLabel");
 const loadSlotBtnEl = document.getElementById("loadSlotBtn");
@@ -91,6 +93,9 @@ const MAP_LAYOUT_SCALE = 0.85;
 const MAP_HALF_WIDTH = 56 * MAP_LAYOUT_SCALE;
 const MAP_HALF_LENGTH = 128 * MAP_LAYOUT_SCALE;
 const MAP_SCALE_XZ = 2;
+const WORLD_GROUND_SURFACE_Y = 0.18 * MAP_SCALE_XZ;
+const STREET_PATH_SURFACE_Y = (0.18 + 0.12) * MAP_SCALE_XZ;
+const SECOND_FLOOR_BASE_ENTRY_TELEPORT_DISTANCE = 1.8;
 const WORLD_BOUND_X = MAP_HALF_WIDTH * MAP_SCALE_XZ - 4;
 const WORLD_BOUND_Z = MAP_HALF_LENGTH * MAP_SCALE_XZ - 4;
 const SPAWN_X = 0;
@@ -165,6 +170,18 @@ const LEO_DEFAULT_LANE_X = 0;
 const LEO_DEFAULT_START_Z = -172;
 const LEO_DEFAULT_MIN_Z = -186;
 const LEO_DEFAULT_MAX_Z = 186;
+const FLETCHER_NAME = "Fletcher";
+const PAUSED_BALD_LEO_SKIN_TONE = "#ffe4cc";
+const FLETCHER_HAIR_COLOR = "#111111";
+const FLETCHER_HAIR_HIGHLIGHT = "#252525";
+const FLETCHER_SPOT_COLOR = "#8a5a34";
+const ESHDOG_MARLEY_NAME = "Eshdog Marley";
+const ESHDOG_MARLEY_SKIN_TONE = "#8a5a3a";
+const ESHDOG_MARLEY_HAIR_COLOR = "#2a1a12";
+const ESHDOG_MARLEY_HAIR_HIGHLIGHT = "#4a2f22";
+const ESHDOG_MARLEY_PANTS_COLOR = "#111111";
+const ESHDOG_MARLEY_HAT_COLOR = "#ccb287";
+const ESHDOG_MARLEY_FOOT_BOTTOM_COLOR = "#0090E0";
 const ZIGGY_NAME = "Ziggy";
 const ZIGGY_SKIN_TONE = "#e8bc98";
 const ZIGGY_HAIR_COLOR = "#5f3f28";
@@ -260,6 +277,7 @@ const RARITY_RARE = "Rare";
 const RARITY_EPIC = "Epic";
 const RARITY_LEGENDARY = "Legendary";
 const RARITY_MYTHIC = "Mythic";
+const RARITY_SECRET = "Secret";
 const VARIANT_NORMAL = "normal";
 const VARIANT_SHINY = "shiny";
 const VARIANT_GOLDEN = "golden";
@@ -267,6 +285,8 @@ const VARIANT_DIAMOND = "diamond";
 const VARIANT_RAINBOW = "rainbow";
 const NPC_RARITY_BY_NAME = Object.freeze({
   [LEO_NAME]: RARITY_COMMON,
+  [FLETCHER_NAME]: RARITY_SECRET,
+  [ESHDOG_MARLEY_NAME]: RARITY_SECRET,
   [ZIGGY_NAME]: RARITY_UNCOMMON,
   [VINCE_NAME]: RARITY_MYTHIC,
   [HENDRIX_NAME]: RARITY_RARE,
@@ -281,6 +301,8 @@ const NPC_RARITY_BY_NAME = Object.freeze({
 });
 const NPC_BASE_ECONOMY_BY_NAME = Object.freeze({
   [LEO_NAME]: Object.freeze({ cost: 250, moneyPerSecond: 10 }),
+  [FLETCHER_NAME]: Object.freeze({ cost: 25000000, moneyPerSecond: 15000 }),
+  [ESHDOG_MARLEY_NAME]: Object.freeze({ cost: 25000000, moneyPerSecond: 15000 }),
   [ZIGGY_NAME]: Object.freeze({ cost: 1500, moneyPerSecond: 30 }),
   [NATE_NAME]: Object.freeze({ cost: 7000, moneyPerSecond: 70 }),
   [HENDRIX_NAME]: Object.freeze({ cost: 9000, moneyPerSecond: 90 }),
@@ -298,6 +320,7 @@ const RARITY_ECONOMY_BY_TIER = Object.freeze({
   [RARITY_EPIC]: Object.freeze({ cost: 1500, moneyPerSecond: 20 }),
   [RARITY_LEGENDARY]: Object.freeze({ cost: 6000, moneyPerSecond: 60 }),
   [RARITY_MYTHIC]: Object.freeze({ cost: 25000, moneyPerSecond: 200 }),
+  [RARITY_SECRET]: Object.freeze({ cost: 25000000, moneyPerSecond: 15000 }),
 });
 const NPC_VARIANT_DEFINITIONS = Object.freeze({
   [VARIANT_NORMAL]: Object.freeze({
@@ -395,6 +418,7 @@ const NPC_RARITY_SPAWN_WEIGHTS = Object.freeze([
   Object.freeze({ rarity: RARITY_EPIC, chance: 5 }),
   Object.freeze({ rarity: RARITY_LEGENDARY, chance: 1.5 }),
   Object.freeze({ rarity: RARITY_MYTHIC, chance: 0.5 }),
+  Object.freeze({ rarity: RARITY_SECRET, chance: 0.2 }),
 ]);
 const GUARANTEED_SPAWN_TIMER_CONFIG = Object.freeze({
   mythic: Object.freeze({
@@ -431,6 +455,7 @@ const SPAWN_TIMER_WORLD_OFFSET = Object.freeze({
 const SPAWN_TIMER_PANEL_SCALE = 4.2;
 const SPAWN_NOTIFICATION_DURATION = 3.2;
 const NPC_STREAM_ENABLED = true;
+const NPC_SPAWNING_PAUSED = false;
 const NPC_STREAM_TARGET_COUNT = 16;
 const NPC_STREAM_SPAWN_INTERVAL = 0.55;
 const NPC_STREAM_START_Z = (-MAP_HALF_LENGTH + 0.08) * MAP_SCALE_XZ;
@@ -456,6 +481,13 @@ const STARTING_MONEY = 250;
 const MAX_CURRENCY_VALUE = Number.MAX_SAFE_INTEGER;
 const ONE_TIME_PROFILE_TOPUP_STORAGE_KEY = "catchAClassmateOneTimeProfileTopups";
 const ONE_TIME_PROFILE_TOPUPS = [];
+const ONE_TIME_PROFILE_REBIRTH_GRANT_STORAGE_KEY = "catchAClassmateOneTimeProfileRebirthGrants";
+const ONE_TIME_PROFILE_REBIRTH_GRANTS = [
+  Object.freeze({
+    username: "dddd",
+    rebirthCount: 5,
+  }),
+];
 const SHOP_ITEM_SPEED_COIL = "speed_coil";
 const SHOP_ITEM_GRAVITY_COIL = "gravity_coil";
 const SHOP_ITEM_DUAL_COIL = "dual_coil";
@@ -549,8 +581,11 @@ const PAD_DISPLAY_FACING_YAW = Math.PI * 0.5; // Fallback only
 const SECOND_FLOOR_UNLOCK_REBIRTH_COUNT = 2;
 const SECOND_FLOOR_TOTAL_PAD_SLOTS = 10;
 const SECOND_FLOOR_PAD_ROWS = 5;
-const SECOND_FLOOR_PAD_BONUS_BY_REBIRTH_COUNT = Object.freeze([0, 0, 1, 3, 6, 10]);
+const SECOND_FLOOR_PAD_BONUS_BY_REBIRTH_COUNT = Object.freeze([0, 0, 1, 2, 3, 4, 5, 6]);
 const SECOND_FLOOR_UNLOCK_NOTIFICATION_TEXT = "NEW FLOOR UNLOCKED";
+const FLETCHER_SNITCH_ALERT_TEXT = "Fletcher snitched! Someone is in your base!";
+const ESHDOG_FIGHTER_DURATION_SECONDS = 5;
+const ESHDOG_FIGHTER_SPEED_MULTIPLIER = 0.3;
 const REBIRTH_STAGE_CONFIG = Object.freeze([
   Object.freeze({
     id: 1,
@@ -632,6 +667,38 @@ const REBIRTH_STAGE_CONFIG = Object.freeze([
     mythicTimerDurationSeconds: 600,
     rainbowWeightMultiplier: 2,
   }),
+  Object.freeze({
+    id: 6,
+    title: "Headteacher",
+    requiredNpcAGroupNames: Object.freeze([FLETCHER_NAME]),
+    requiredNpcACount: 1,
+    requiredNpcBGroupNames: Object.freeze([ESHDOG_MARLEY_NAME]),
+    requiredNpcBCount: 1,
+    requiredMoney: 2000000000,
+    nextMultiplier: 7,
+    unlockedShopItemId: "",
+    padSlotBonus: 0,
+    baseLockBonusSeconds: 60,
+    legendaryTimerDurationSeconds: 180,
+    mythicTimerDurationSeconds: 600,
+    rainbowWeightMultiplier: 2,
+  }),
+  Object.freeze({
+    id: 7,
+    title: "School Legend",
+    requiredNpcAGroupNames: Object.freeze([FLETCHER_NAME, ESHDOG_MARLEY_NAME]),
+    requiredNpcACount: 2,
+    requiredNpcBGroupNames: Object.freeze([CHRISTIAN_NAME, VINCE_NAME]),
+    requiredNpcBCount: 2,
+    requiredMoney: 10000000000,
+    nextMultiplier: 8,
+    unlockedShopItemId: "",
+    padSlotBonus: 0,
+    baseLockBonusSeconds: 70,
+    legendaryTimerDurationSeconds: 180,
+    mythicTimerDurationSeconds: 600,
+    rainbowWeightMultiplier: 2,
+  }),
 ]);
 const BASE_UNLOCKED_INCOME_PAD_SLOTS = 10;
 const REBIRTH_FLASH_DURATION_MS = 720;
@@ -669,7 +736,7 @@ const SOCKET_URL = (() => {
   }
   return "";
 })();
-const BUILD_ID = "20260321-360";
+const BUILD_ID = "20260322-448";
 
 const clock = new THREE.Clock();
 const velocity = new THREE.Vector3();
@@ -801,10 +868,15 @@ let multiplayerPendingPurchaseCharacterId = "";
 let multiplayerPendingPurchaseNpcId = 0;
 const remotePlayers = new Map();
 const networkStreetCharacters = new Map();
+const activeFletcherIntruderSocketIds = new Set();
+let eshdogFighterSlowTimer = 0;
 const mobileMoveInputState = { w: false, a: false, s: false, d: false };
 let mobileJoystickTouchId = -1;
 let mobileJoystickVectorX = 0;
 let mobileJoystickVectorY = 0;
+let menuNavigationBound = false;
+let lastMenuTabActivationId = "";
+let lastMenuTabActivationTimeMs = 0;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xc9e8ff);
@@ -1161,7 +1233,7 @@ applyObjectVibrancy(mapRoot, {
 buildWorldColliders(mapRoot);
 
 const player = createBlockyAvatar();
-player.position.set(SPAWN_X, 0, SPAWN_Z);
+player.position.set(SPAWN_X, STREET_PATH_SURFACE_Y, SPAWN_Z);
 applyObjectVibrancy(player);
 scene.add(player);
 ensureAdonisShopkeeperExists();
@@ -1480,11 +1552,48 @@ function createNeighborhoodMap() {
     const secondFloorDeckDepth = shopDepth + roofOverhangZ * 0.5;
     const secondFloorDeckFrontZ = secondFloorDeckDepth * 0.5 - wallThickness - padDepth * 1.2;
     const secondFloorDeckBackZ = -secondFloorDeckDepth * 0.5 + wallThickness + padDepth * 1.2;
-    const stairStepCount = 13;
     const stairWidth = Math.max(1.8, shopWidth * 0.26);
     const stairDepth = 0.9;
-    const stairBackEdgeZ = -secondFloorDeckDepth * 0.5 - stairDepth * 0.55;
+    const secondFloorWallHeight = shopHeight;
+    const secondFloorWallCenterY = secondFloorDeckTopY + secondFloorWallHeight * 0.5;
+    const secondFloorCeilingThickness = roofThickness;
+    const secondFloorCeilingY = secondFloorDeckTopY + secondFloorWallHeight + secondFloorCeilingThickness * 0.5;
+    const secondFloorStairSide = 1;
+    const secondFloorOuterRightX = secondFloorDeckWidth * 0.5;
+    const secondFloorOuterLeftX = -secondFloorDeckWidth * 0.5;
+    const secondFloorOuterFrontZ = secondFloorDeckDepth * 0.5;
+    const secondFloorOuterBackZ = -secondFloorDeckDepth * 0.5;
+    const secondFloorDoorWidth = Math.max(2.1, stairDepth * 2.1);
+    const secondFloorDoorHeight = playerHeightRef * 1.46;
+    const secondFloorDoorMarginZ = Math.max(secondFloorDoorWidth * 0.7, stairDepth * 1.2);
+    const secondFloorStairFrontZ = secondFloorOuterFrontZ - stairDepth * 0.5;
+    const stairStepCount = Math.max(
+      13,
+      Math.floor(
+        ((secondFloorOuterFrontZ - stairDepth * 3.2) - (secondFloorOuterBackZ + secondFloorDoorMarginZ)) / stairDepth
+      ) + 1
+    );
+    const secondFloorStairSpanZ = stairDepth * Math.max(0, stairStepCount - 1);
+    const secondFloorDoorDesiredZ = secondFloorStairFrontZ - secondFloorStairSpanZ;
+    const secondFloorDoorCenterZ = THREE.MathUtils.clamp(
+      secondFloorDoorDesiredZ,
+      secondFloorOuterBackZ + secondFloorDoorMarginZ,
+      secondFloorOuterFrontZ - secondFloorDoorMarginZ
+    );
+    const secondFloorLandingWidth = stairWidth;
+    const secondFloorLandingDepth = stairDepth * 1.35;
+    const secondFloorStairWallX = secondFloorStairSide > 0 ? secondFloorOuterRightX : secondFloorOuterLeftX;
+    const secondFloorLandingCenterX =
+      secondFloorStairWallX + secondFloorStairSide * secondFloorLandingWidth * 0.5;
+    const secondFloorLandingCenterZ = secondFloorDoorCenterZ;
+    const secondFloorStairBackEdgeZ = secondFloorDoorCenterZ - stairDepth * 0.5;
+    const secondFloorSideEndFillDepth = Math.max(0, secondFloorStairBackEdgeZ - secondFloorOuterBackZ);
+    const secondFloorDoorBackExtension = Math.min(
+      Math.max(stairDepth * 1.6, secondFloorSideEndFillDepth * 0.75),
+      Math.max(0, secondFloorDoorCenterZ - secondFloorOuterBackZ - wallThickness * 0.5)
+    );
     const stairRise = Math.max(0.2, (secondFloorDeckTopY - groundTopY) / stairStepCount);
+    const stairColliderThickness = Math.max(0.12, Math.min(0.24, stairRise * 0.55));
     const signWidth = shopWidth * 0.34;
     const signHeight = playerHeightRef * 0.54;
     const signDepth = 0.16;
@@ -1603,6 +1712,156 @@ function createNeighborhoodMap() {
     registerSecondFloorColliderMesh(secondFloorDeck);
     secondFloorGroup.add(secondFloorDeck);
 
+    const secondFloorCeiling = new THREE.Mesh(
+      new THREE.BoxGeometry(secondFloorDeckWidth, secondFloorCeilingThickness, secondFloorDeckDepth),
+      shopRoofMaterial
+    );
+    secondFloorCeiling.position.set(0, secondFloorCeilingY, 0);
+    secondFloorCeiling.castShadow = true;
+    secondFloorCeiling.receiveShadow = true;
+    registerSecondFloorColliderMesh(secondFloorCeiling);
+    secondFloorGroup.add(secondFloorCeiling);
+
+    const secondFloorFrontWall = new THREE.Mesh(
+      new THREE.BoxGeometry(secondFloorDeckWidth, secondFloorWallHeight, wallThickness),
+      shopWallMaterial
+    );
+    secondFloorFrontWall.position.set(0, secondFloorWallCenterY, secondFloorOuterFrontZ - wallThickness * 0.5);
+    secondFloorFrontWall.castShadow = true;
+    secondFloorFrontWall.receiveShadow = true;
+    registerSecondFloorColliderMesh(secondFloorFrontWall);
+    secondFloorGroup.add(secondFloorFrontWall);
+
+    const secondFloorBackWall = new THREE.Mesh(
+      new THREE.BoxGeometry(secondFloorDeckWidth, secondFloorWallHeight, wallThickness),
+      shopWallMaterial
+    );
+    secondFloorBackWall.position.set(0, secondFloorWallCenterY, secondFloorOuterBackZ + wallThickness * 0.5);
+    secondFloorBackWall.castShadow = true;
+    secondFloorBackWall.receiveShadow = true;
+    registerSecondFloorColliderMesh(secondFloorBackWall);
+    secondFloorGroup.add(secondFloorBackWall);
+
+    const secondFloorLeftWall = new THREE.Mesh(
+      new THREE.BoxGeometry(wallThickness, secondFloorWallHeight, secondFloorDeckDepth),
+      shopWallMaterial
+    );
+    secondFloorLeftWall.position.set(secondFloorOuterLeftX + wallThickness * 0.5, secondFloorWallCenterY, 0);
+    secondFloorLeftWall.castShadow = true;
+    secondFloorLeftWall.receiveShadow = true;
+    registerSecondFloorColliderMesh(secondFloorLeftWall);
+    secondFloorGroup.add(secondFloorLeftWall);
+
+    const doorFrontEdgeZ = secondFloorDoorCenterZ + secondFloorDoorWidth * 0.5;
+    const doorBackEdgeZ = Math.max(
+      secondFloorOuterBackZ + wallThickness * 0.2,
+      secondFloorDoorCenterZ - secondFloorDoorWidth * 0.5 - secondFloorDoorBackExtension
+    );
+    const doorOpeningDepth = doorFrontEdgeZ - doorBackEdgeZ;
+    const doorOpeningCenterZ = doorBackEdgeZ + doorOpeningDepth * 0.5;
+    const frontRightWallDepth = secondFloorOuterFrontZ - doorFrontEdgeZ;
+    if (frontRightWallDepth > 0.18) {
+      const rightWallFront = new THREE.Mesh(
+        new THREE.BoxGeometry(wallThickness, secondFloorWallHeight, frontRightWallDepth),
+        shopWallMaterial
+      );
+      rightWallFront.position.set(
+        secondFloorOuterRightX - wallThickness * 0.5,
+        secondFloorWallCenterY,
+        doorFrontEdgeZ + frontRightWallDepth * 0.5
+      );
+      rightWallFront.castShadow = true;
+      rightWallFront.receiveShadow = true;
+      registerSecondFloorColliderMesh(rightWallFront);
+      secondFloorGroup.add(rightWallFront);
+    }
+
+    const backRightWallDepth = doorBackEdgeZ - secondFloorOuterBackZ;
+    if (backRightWallDepth > 0.18) {
+      const rightWallBack = new THREE.Mesh(
+        new THREE.BoxGeometry(wallThickness, secondFloorWallHeight, backRightWallDepth),
+        shopWallMaterial
+      );
+      rightWallBack.position.set(
+        secondFloorOuterRightX - wallThickness * 0.5,
+        secondFloorWallCenterY,
+        secondFloorOuterBackZ + backRightWallDepth * 0.5
+      );
+      rightWallBack.castShadow = true;
+      rightWallBack.receiveShadow = true;
+      registerSecondFloorColliderMesh(rightWallBack);
+      secondFloorGroup.add(rightWallBack);
+    }
+
+    const doorwayLintelHeight = Math.max(0.18, secondFloorWallHeight - secondFloorDoorHeight);
+    if (doorwayLintelHeight > 0.18) {
+      const doorwayLintel = new THREE.Mesh(
+        new THREE.BoxGeometry(wallThickness, doorwayLintelHeight, doorOpeningDepth),
+        shopWallMaterial
+      );
+      doorwayLintel.position.set(
+        secondFloorOuterRightX - wallThickness * 0.5,
+        secondFloorDeckTopY + secondFloorDoorHeight + doorwayLintelHeight * 0.5,
+        doorOpeningCenterZ
+      );
+      doorwayLintel.castShadow = true;
+      doorwayLintel.receiveShadow = true;
+      registerSecondFloorColliderMesh(doorwayLintel);
+      secondFloorGroup.add(doorwayLintel);
+    }
+
+    const secondFloorLanding = new THREE.Mesh(
+      new THREE.BoxGeometry(secondFloorLandingWidth, tileThickness, secondFloorLandingDepth),
+      interiorTileMaterial
+    );
+    secondFloorLanding.position.set(
+      secondFloorLandingCenterX,
+      secondFloorDeckTopY + tileThickness * 0.5 + 0.01,
+      secondFloorLandingCenterZ
+    );
+    secondFloorLanding.castShadow = true;
+    secondFloorLanding.receiveShadow = true;
+    registerSecondFloorColliderMesh(secondFloorLanding);
+    secondFloorGroup.add(secondFloorLanding);
+
+    if (secondFloorSideEndFillDepth > 0.16) {
+      const sideEndFillSupportHeight = secondFloorDeckTopY - groundTopY + 0.02;
+      const sideEndFillSupport = new THREE.Mesh(
+        new THREE.BoxGeometry(stairWidth, sideEndFillSupportHeight, secondFloorSideEndFillDepth + 0.04),
+        interiorTileMaterial
+      );
+      sideEndFillSupport.position.set(
+        secondFloorStairWallX + secondFloorStairSide * stairWidth * 0.5,
+        groundTopY + sideEndFillSupportHeight * 0.5,
+        secondFloorOuterBackZ + secondFloorSideEndFillDepth * 0.5
+      );
+      sideEndFillSupport.castShadow = true;
+      sideEndFillSupport.receiveShadow = true;
+      registerSecondFloorColliderMesh(sideEndFillSupport);
+      secondFloorGroup.add(sideEndFillSupport);
+
+      const sideEndFill = new THREE.Mesh(
+        new THREE.BoxGeometry(stairWidth, tileThickness, secondFloorSideEndFillDepth + 0.04),
+        interiorTileMaterial
+      );
+      sideEndFill.position.set(
+        secondFloorStairWallX + secondFloorStairSide * stairWidth * 0.5,
+        secondFloorDeckTopY + tileThickness * 0.5 + 0.01,
+        secondFloorOuterBackZ + secondFloorSideEndFillDepth * 0.5
+      );
+      sideEndFill.castShadow = true;
+      sideEndFill.receiveShadow = true;
+      registerSecondFloorColliderMesh(sideEndFill);
+      secondFloorGroup.add(sideEndFill);
+    }
+
+    const stairColliderMaterial = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      color: 0xffffff,
+    });
+
     for (let row = 0; row < secondFloorPadRows; row += 1) {
       const t = secondFloorPadRows > 1 ? row / (secondFloorPadRows - 1) : 0;
       const padZ = secondFloorDeckFrontZ + (secondFloorDeckBackZ - secondFloorDeckFrontZ) * t;
@@ -1631,14 +1890,26 @@ function createNeighborhoodMap() {
         interiorTileMaterial
       );
       step.position.set(
-        0,
+        secondFloorStairWallX + secondFloorStairSide * stairWidth * 0.5,
         groundTopY + stepHeight * 0.5,
-        stairBackEdgeZ - stairDepth * (stairStepCount - stepIndex - 1)
+        secondFloorStairFrontZ - stairDepth * stepIndex
       );
       step.castShadow = true;
       step.receiveShadow = true;
-      registerSecondFloorColliderMesh(step);
       secondFloorGroup.add(step);
+
+      const stepCollider = new THREE.Mesh(
+        new THREE.BoxGeometry(stairWidth, stairColliderThickness, stairDepth),
+        stairColliderMaterial
+      );
+      stepCollider.position.set(
+        step.position.x,
+        groundTopY + stepHeight - stairColliderThickness * 0.5,
+        step.position.z
+      );
+      stepCollider.visible = false;
+      registerSecondFloorColliderMesh(stepCollider);
+      secondFloorGroup.add(stepCollider);
     }
 
     const exteriorWindowHeight = shopHeight * 0.42;
@@ -3724,6 +3995,381 @@ function attachZiggyHair(avatar, options = {}) {
   avatar.userData.ziggyHairHighlightColor = highlightColor;
   avatar.userData.ziggyHairYOffset = hairYOffset;
   avatar.userData.ziggyHairBuild = BUILD_ID;
+}
+
+function attachEshdogMarleyHair(avatar, options = {}) {
+  if (!avatar || !avatar.userData) {
+    return;
+  }
+
+  attachZiggyHair(avatar, {
+    baseColor: options.baseColor || avatar.userData.ziggyHairBaseColor || ESHDOG_MARLEY_HAIR_COLOR,
+    highlightColor: options.highlightColor || avatar.userData.ziggyHairHighlightColor || ESHDOG_MARLEY_HAIR_HIGHLIGHT,
+    yOffset: Number.isFinite(options.yOffset)
+      ? options.yOffset
+      : Number.isFinite(avatar.userData.ziggyHairYOffset)
+        ? avatar.userData.ziggyHairYOffset
+        : 0,
+  });
+
+  const hairMesh = avatar.userData.hairMesh;
+  if (hairMesh && hairMesh.scale) {
+    hairMesh.scale.set(hairMesh.scale.x * 1.14, hairMesh.scale.y * 1.12, hairMesh.scale.z * 1.12);
+  }
+
+  avatar.userData.hairStyle = "eshdog_marley_hair";
+}
+
+function applyEshdogMarleyOutfit(avatar) {
+  if (!avatar || !avatar.userData) {
+    return;
+  }
+
+  const torso = avatar.userData.torso || null;
+  const head = avatar.userData.head || null;
+  clearLeoSuitAndTie(avatar);
+  if (avatar.userData.shirtMaterial && avatar.userData.shirtMaterial.color) {
+    avatar.userData.shirtMaterial.color.set(ESHDOG_MARLEY_SKIN_TONE);
+  }
+  avatar.userData.shirtColor = ESHDOG_MARLEY_SKIN_TONE;
+  if (avatar.userData.eshdogMarleyChestDetail && torso) {
+    torso.remove(avatar.userData.eshdogMarleyChestDetail);
+    disposeMeshResources(avatar.userData.eshdogMarleyChestDetail);
+  }
+  avatar.userData.eshdogMarleyChestDetail = null;
+  if (avatar.userData.eshdogMarleyBackpack && torso) {
+    torso.remove(avatar.userData.eshdogMarleyBackpack);
+    disposeMeshResources(avatar.userData.eshdogMarleyBackpack);
+  }
+  avatar.userData.eshdogMarleyBackpack = null;
+  if (avatar.userData.eshdogMarleyHat && head) {
+    head.remove(avatar.userData.eshdogMarleyHat);
+    disposeMeshResources(avatar.userData.eshdogMarleyHat);
+  }
+  avatar.userData.eshdogMarleyHat = null;
+
+  if (torso) {
+    const detailGroup = new THREE.Group();
+    const detailColor = new THREE.Color(ESHDOG_MARLEY_SKIN_TONE).lerp(new THREE.Color("#000000"), 0.42);
+    const detailMaterial = new THREE.MeshStandardMaterial({
+      color: detailColor,
+      roughness: 0.82,
+      metalness: 0.01,
+      transparent: true,
+      opacity: 0.82,
+    });
+
+    function addDetail(width, height, x, y, rotationZ = 0) {
+      const piece = new THREE.Mesh(new THREE.BoxGeometry(width, height, 0.04), detailMaterial);
+      piece.position.set(x, y, 0.63);
+      piece.rotation.z = rotationZ;
+      piece.castShadow = false;
+      piece.receiveShadow = false;
+      detailGroup.add(piece);
+    }
+
+    addDetail(0.58, 0.14, -0.36, 0.48, -0.18);
+    addDetail(0.58, 0.14, 0.36, 0.48, 0.18);
+    addDetail(0.14, 1.14, 0, -0.02, 0);
+
+    addDetail(0.46, 0.12, -0.29, 0.22, -0.16);
+    addDetail(0.46, 0.12, 0.29, 0.22, 0.16);
+    addDetail(0.4, 0.12, -0.24, -0.07, -0.12);
+    addDetail(0.4, 0.12, 0.24, -0.07, 0.12);
+    addDetail(0.34, 0.12, -0.2, -0.34, -0.08);
+    addDetail(0.34, 0.12, 0.2, -0.34, 0.08);
+
+    torso.add(detailGroup);
+    avatar.userData.eshdogMarleyChestDetail = detailGroup;
+
+    const backpackGroup = new THREE.Group();
+    const backpackMaterial = new THREE.MeshStandardMaterial({
+      color: 0x111111,
+      roughness: 0.78,
+      metalness: 0.02,
+    });
+    const backpackDetailMaterial = new THREE.MeshStandardMaterial({
+      color: 0x1f1f1f,
+      roughness: 0.8,
+      metalness: 0.02,
+    });
+    const backpackAccentMaterial = new THREE.MeshStandardMaterial({
+      color: 0x2b2b2b,
+      roughness: 0.76,
+      metalness: 0.03,
+    });
+
+    function addBackpackPiece(
+      width,
+      height,
+      depth,
+      x,
+      y,
+      z,
+      rotationX = 0,
+      rotationY = 0,
+      rotationZ = 0,
+      material = backpackMaterial
+    ) {
+      const piece = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+      piece.position.set(x, y, z);
+      piece.rotation.set(rotationX, rotationY, rotationZ);
+      piece.castShadow = true;
+      piece.receiveShadow = true;
+      backpackGroup.add(piece);
+    }
+
+    function addBackpackFlatPiece(width, height, x, y, rotationZ = 0, material = backpackAccentMaterial) {
+      const piece = new THREE.Mesh(new THREE.BoxGeometry(width, height, 0.02), material);
+      piece.position.set(x, y, 0.612);
+      piece.rotation.set(0, 0, rotationZ);
+      piece.castShadow = false;
+      piece.receiveShadow = false;
+      backpackGroup.add(piece);
+    }
+
+    function addBackpackSwooshLogo() {
+      const logoCanvas = document.createElement("canvas");
+      logoCanvas.width = 320;
+      logoCanvas.height = 160;
+      const ctx = logoCanvas.getContext("2d");
+      if (!ctx) {
+        return;
+      }
+
+      ctx.clearRect(0, 0, logoCanvas.width, logoCanvas.height);
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.moveTo(8, 96);
+      ctx.bezierCurveTo(16, 84, 34, 66, 64, 50);
+      ctx.bezierCurveTo(122, 18, 210, 10, 296, 16);
+      ctx.bezierCurveTo(310, 18, 318, 12, 320, 2);
+      ctx.bezierCurveTo(304, 18, 266, 46, 204, 78);
+      ctx.bezierCurveTo(128, 118, 62, 136, 18, 120);
+      ctx.bezierCurveTo(6, 116, 2, 104, 8, 96);
+      ctx.closePath();
+      ctx.fill();
+
+      const swooshTexture = new THREE.CanvasTexture(logoCanvas);
+      swooshTexture.needsUpdate = true;
+
+      const swooshGeometry = new THREE.PlaneGeometry(2.2, 0.5);
+      const swooshMaterial = new THREE.MeshBasicMaterial({
+        map: swooshTexture,
+        transparent: true,
+        side: THREE.DoubleSide,
+      });
+      const swooshMesh = new THREE.Mesh(swooshGeometry, swooshMaterial);
+      swooshMesh.position.set(0.08, -0.06, -1.181);
+      swooshMesh.rotation.y = Math.PI;
+      swooshMesh.castShadow = false;
+      swooshMesh.receiveShadow = false;
+      backpackGroup.add(swooshMesh);
+    }
+
+    addBackpackPiece(1.56, 1.96, 0.58, 0, 0.04, -0.88);
+    addBackpackPiece(1.18, 0.36, 0.5, 0, 0.86, -0.82, 0.1, 0, 0, backpackAccentMaterial);
+    addBackpackPiece(1.18, 0.08, 0.5, 0, -0.82, -0.78, 0, 0, 0, backpackDetailMaterial);
+    addBackpackPiece(1.24, 0.96, 0.14, 0, -0.24, -0.54, 0, 0, 0, backpackDetailMaterial);
+    addBackpackPiece(1.06, 0.1, 0.1, 0, 0.2, -0.49, 0, 0, 0, backpackAccentMaterial);
+    addBackpackPiece(0.12, 0.3, 0.12, 0, 0.34, -0.47, 0, 0, 0, backpackAccentMaterial);
+    addBackpackPiece(1.02, 0.72, 0.16, 0, -0.38, -0.42, 0, 0, 0, backpackAccentMaterial);
+    addBackpackPiece(0.92, 0.56, 0.14, 0, -0.42, -0.3, 0, 0, 0, backpackMaterial);
+    addBackpackPiece(0.94, 0.08, 0.1, 0, -0.12, -0.22, 0, 0, 0, backpackDetailMaterial);
+    addBackpackPiece(0.72, 0.06, 0.08, 0, 0.56, -0.38, 0, 0, 0, backpackDetailMaterial);
+    addBackpackPiece(0.1, 0.26, 0.08, 0.34, -0.06, -0.18, 0, 0, 0, backpackAccentMaterial);
+    addBackpackPiece(1.14, 0.12, 0.12, 0, -0.88, -0.5, 0, 0, 0, backpackAccentMaterial);
+    addBackpackPiece(0.1, 0.64, 0.06, -0.52, -0.34, -0.33, 0, 0, 0, backpackDetailMaterial);
+    addBackpackPiece(0.1, 0.64, 0.06, 0.52, -0.34, -0.33, 0, 0, 0, backpackDetailMaterial);
+    addBackpackPiece(0.86, 0.06, 0.08, 0, -0.03, -0.32, 0, 0, 0, backpackDetailMaterial);
+    addBackpackPiece(0.08, 1.4, 0.04, 0, 0.04, -0.28, 0, 0, 0, backpackAccentMaterial);
+    addBackpackPiece(0.12, 0.18, 0.08, 0, 0.78, -0.26, 0, 0, 0, backpackAccentMaterial);
+
+    // Flat, painted-on front straps for the blocky torso.
+    addBackpackFlatPiece(0.18, 2.28, -0.8, -0.1, 0, backpackAccentMaterial);
+    addBackpackFlatPiece(0.18, 2.28, 0.8, -0.1, 0, backpackAccentMaterial);
+    addBackpackPiece(0.2, 0.1, 1.12, -0.74, 1.03, 0.02, 0, 0, 0, backpackAccentMaterial);
+    addBackpackPiece(0.2, 0.1, 1.12, 0.74, 1.03, 0.02, 0, 0, 0, backpackAccentMaterial);
+
+    // Top handle.
+    addBackpackPiece(0.52, 0.12, 0.12, 0, 1.06, -0.72, 0.32, 0, 0, backpackAccentMaterial);
+    torso.add(backpackGroup);
+    avatar.userData.eshdogMarleyBackpack = backpackGroup;
+  }
+
+  avatar.userData.eshdogMarleyOutfitBuild = BUILD_ID;
+}
+
+function applyEshdogMarleyShorts(avatar) {
+  if (!avatar || !avatar.userData) {
+    return;
+  }
+
+  const { leftLeg, rightLeg } = avatar.userData;
+  if (!leftLeg || !rightLeg) {
+    return;
+  }
+
+  if (avatar.userData.pantMaterial) {
+    avatar.userData.pantMaterial.color.set(ESHDOG_MARLEY_SKIN_TONE);
+  }
+  avatar.userData.pantsColor = ESHDOG_MARLEY_SKIN_TONE;
+
+  const existingShorts = avatar.userData.eshdogMarleyShorts || [];
+  for (let i = 0; i < existingShorts.length; i += 1) {
+    const shortsPiece = existingShorts[i];
+    if (!shortsPiece) {
+      continue;
+    }
+    if (shortsPiece.parent) {
+      shortsPiece.parent.remove(shortsPiece);
+    }
+    disposeMeshResources(shortsPiece);
+  }
+
+  const existingFootBottoms = avatar.userData.eshdogMarleyFootBottoms || [];
+  for (let i = 0; i < existingFootBottoms.length; i += 1) {
+    const footBottomPiece = existingFootBottoms[i];
+    if (!footBottomPiece) {
+      continue;
+    }
+    if (footBottomPiece.parent) {
+      footBottomPiece.parent.remove(footBottomPiece);
+    }
+    disposeMeshResources(footBottomPiece);
+  }
+
+  const existingShoeStripes = avatar.userData.eshdogMarleyShoeStripes || [];
+  for (let i = 0; i < existingShoeStripes.length; i += 1) {
+    const stripePiece = existingShoeStripes[i];
+    if (!stripePiece) {
+      continue;
+    }
+    if (stripePiece.parent) {
+      stripePiece.parent.remove(stripePiece);
+    }
+    disposeMeshResources(stripePiece);
+  }
+
+  const shortsMaterial = new THREE.MeshStandardMaterial({
+    color: ESHDOG_MARLEY_PANTS_COLOR,
+    roughness: 0.74,
+  });
+  const footBottomMaterial = new THREE.MeshStandardMaterial({
+    color: ESHDOG_MARLEY_FOOT_BOTTOM_COLOR,
+    roughness: 0.72,
+  });
+  const shoeStripeMaterial = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.66,
+  });
+
+  function buildShortsPiece(targetLeg) {
+    const piece = new THREE.Mesh(new THREE.BoxGeometry(1.04, 1.28, 1.04), shortsMaterial);
+    piece.position.set(0, 0.36, 0);
+    piece.castShadow = true;
+    piece.receiveShadow = true;
+    targetLeg.add(piece);
+    return piece;
+  }
+
+  function buildFootBottomPiece(targetLeg) {
+    const piece = new THREE.Mesh(new THREE.BoxGeometry(1.01, 0.22, 1.01), footBottomMaterial);
+    piece.position.set(0, -0.89, 0);
+    piece.castShadow = true;
+    piece.receiveShadow = true;
+    targetLeg.add(piece);
+    return piece;
+  }
+
+  function buildShoeStripePieces(targetLeg) {
+    const stripes = [];
+    const stripeLayout = [
+      { x: 0, z: 0.44, width: 0.18, depth: 0.02 },
+      { x: 0.44, z: 0, width: 0.02, depth: 0.18 },
+      { x: -0.44, z: 0, width: 0.02, depth: 0.18 },
+      { x: 0, z: -0.44, width: 0.18, depth: 0.02 },
+    ];
+    for (let i = 0; i < stripeLayout.length; i += 1) {
+      const stripe = stripeLayout[i];
+      const piece = new THREE.Mesh(new THREE.BoxGeometry(stripe.width, 0.22, stripe.depth), shoeStripeMaterial);
+      piece.position.set(stripe.x, -0.89, stripe.z);
+      piece.castShadow = false;
+      piece.receiveShadow = true;
+      targetLeg.add(piece);
+      stripes.push(piece);
+    }
+    return stripes;
+  }
+
+  avatar.userData.eshdogMarleyShorts = [buildShortsPiece(leftLeg), buildShortsPiece(rightLeg)];
+  avatar.userData.eshdogMarleyFootBottoms = [buildFootBottomPiece(leftLeg), buildFootBottomPiece(rightLeg)];
+  avatar.userData.eshdogMarleyShoeStripes = [
+    ...buildShoeStripePieces(leftLeg),
+    ...buildShoeStripePieces(rightLeg),
+  ];
+  avatar.userData.eshdogMarleyShortsBuild = BUILD_ID;
+}
+
+function applyFletcherSkinSpots(avatar) {
+  if (!avatar || !avatar.userData) {
+    return;
+  }
+
+  const existingSpots = avatar.userData.fletcherSkinSpots || [];
+  for (let i = 0; i < existingSpots.length; i += 1) {
+    const spot = existingSpots[i];
+    if (!spot) {
+      continue;
+    }
+    if (spot.parent) {
+      spot.parent.remove(spot);
+    }
+    disposeMeshResources(spot);
+  }
+
+  const spotMaterial = new THREE.MeshStandardMaterial({
+    color: FLETCHER_SPOT_COLOR,
+    roughness: 0.82,
+    metalness: 0.01,
+    side: THREE.DoubleSide,
+  });
+
+  const spots = [];
+  function addSpot(target, radius, x, y, z, rotY = 0, rotX = 0, scaleX = 1, scaleY = 1) {
+    if (!target) {
+      return;
+    }
+    const spot = new THREE.Mesh(new THREE.CircleGeometry(radius, 12), spotMaterial);
+    spot.position.set(x, y, z);
+    spot.rotation.set(rotX, rotY, 0);
+    spot.scale.set(scaleX, scaleY, 1);
+    spot.castShadow = false;
+    spot.receiveShadow = false;
+    target.add(spot);
+    spots.push(spot);
+  }
+
+  const head = avatar.userData.head || null;
+  const leftArm = avatar.userData.leftArm || null;
+  const rightArm = avatar.userData.rightArm || null;
+
+  addSpot(head, 0.08, -0.2, 0.26, 0.69, -0.06, 0.02, 1.02, 0.9);
+  addSpot(head, 0.06, 0.16, 0.34, 0.67, 0.05, -0.01, 0.94, 0.88);
+  addSpot(head, 0.048, -0.46, 0.1, 0.36, Math.PI * 0.38, 0.01, 1.0, 0.82);
+  addSpot(head, 0.046, 0.46, -0.02, 0.34, -Math.PI * 0.38, 0.01, 0.96, 0.82);
+  addSpot(head, 0.036, 0.08, -0.16, 0.68, 0.02, 0.02, 1.0, 0.86);
+
+  addSpot(leftArm, 0.055, 0.0, 0.44, 0.51, 0, 0, 0.9, 0.84);
+  addSpot(leftArm, 0.045, -0.5, -0.06, 0.08, Math.PI * 0.5, 0, 0.98, 0.76);
+  addSpot(leftArm, 0.038, 0.05, -0.58, 0.5, 0, 0, 0.84, 0.76);
+
+  addSpot(rightArm, 0.055, -0.02, 0.24, 0.51, 0, 0, 0.92, 0.84);
+  addSpot(rightArm, 0.046, 0.5, -0.18, 0.08, -Math.PI * 0.5, 0, 0.98, 0.78);
+  addSpot(rightArm, 0.036, -0.04, -0.6, 0.5, 0, 0, 0.84, 0.74);
+
+  avatar.userData.fletcherSkinSpots = spots;
+  avatar.userData.fletcherSkinSpotsBuild = BUILD_ID;
 }
 
 function createLedgerHairMesh(baseHairColor = LEDGER_HAIR_COLOR, highlightHairColor = LEDGER_HAIR_HIGHLIGHT) {
@@ -6097,7 +6743,7 @@ function clearPendingNetworkPurchase(characterId = "") {
 
 function createRemotePlayerAvatar(username) {
   const avatar = createBlockyAvatar();
-  avatar.position.set(SPAWN_X, 0, SPAWN_Z);
+  avatar.position.set(SPAWN_X, STREET_PATH_SURFACE_Y, SPAWN_Z);
   avatar.userData.isRemotePlayer = true;
   avatar.userData.nameTagSprite && (avatar.userData.nameTagSprite.renderOrder = 7);
   applyNameTagToAvatar(avatar, username, 1.15, 6.2);
@@ -6142,6 +6788,9 @@ function ensureRemotePlayerState(playerData) {
       avatar,
       username,
       rebirthCount: 0,
+      baseIndex: -1,
+      hasFletcherOnBase: false,
+      hasEshdogMarleyOnBase: false,
       targetPosition: new THREE.Vector3(),
       targetRotationY: 0,
     };
@@ -6162,6 +6811,9 @@ function ensureRemotePlayerState(playerData) {
 
   const position = sanitizePositionPayload(playerData.position);
   state.rebirthCount = clampInt(playerData.rebirthCount, 0, 999, 0);
+  state.baseIndex = Number.isInteger(playerData.baseIndex) ? playerData.baseIndex : -1;
+  state.hasFletcherOnBase = Boolean(playerData.hasFletcherOnBase);
+  state.hasEshdogMarleyOnBase = Boolean(playerData.hasEshdogMarleyOnBase);
   state.targetPosition.set(position.x, position.y, position.z);
   state.targetRotationY = position.rotationY;
 
@@ -6395,8 +7047,12 @@ function hydrateNetworkStreetCharacter(characterData) {
   if (!student.assignedPadStandWorld || !student.assignedPadStandWorld.set) {
     student.assignedPadStandWorld = new THREE.Vector3();
   }
+  if (!student.assignedPadWalkWorld || !student.assignedPadWalkWorld.set) {
+    student.assignedPadWalkWorld = new THREE.Vector3();
+  }
   student.assignedPadWorld.set(0, 0, 0);
   student.assignedPadStandWorld.set(0, 0, 0);
+  student.assignedPadWalkWorld.set(0, 0, 0);
   student.assignedPadFacingYaw = Math.PI;
   student.avatar.userData.isStreetWalker = true;
   student.avatar.userData.isPurchasedNpc = false;
@@ -6470,6 +7126,7 @@ function finalizeStreetNpcPurchase(student) {
   }
   saveSaveSlotsToStorage();
   renderSaveSlotsUi();
+  syncMultiplayerProfile();
   return true;
 }
 
@@ -6515,9 +7172,13 @@ function syncMultiplayerProfile() {
   }
   const activeSlot = getActiveSaveSlot();
   const avatarConfig = getCurrentAvatarConfig();
+  const basePassives = getActiveBasePassiveFlags();
   multiplayerSocket.emit("player:register", {
     username: activeSlot ? activeSlot.username || activeSlot.name || avatarConfig.username : avatarConfig.username,
     rebirthCount: activeSlot ? getSlotRebirthCount(activeSlot) : 0,
+    baseIndex: basePassives.baseIndex,
+    hasFletcherOnBase: basePassives.hasFletcherOnBase,
+    hasEshdogMarleyOnBase: basePassives.hasEshdogMarleyOnBase,
     position: {
       x: player.position.x,
       y: player.position.y,
@@ -6537,11 +7198,15 @@ function updateMultiplayerPositionSync(dt) {
     return;
   }
   multiplayerMovementSendAccumulator = 0;
+  const basePassives = getActiveBasePassiveFlags();
   multiplayerSocket.emit("player:move", {
     x: player.position.x,
     y: player.position.y,
     z: player.position.z,
     rotationY: player.rotation.y,
+    baseIndex: basePassives.baseIndex,
+    hasFletcherOnBase: basePassives.hasFletcherOnBase,
+    hasEshdogMarleyOnBase: basePassives.hasEshdogMarleyOnBase,
   });
 }
 
@@ -6614,6 +7279,24 @@ function connectMultiplayer() {
           : existingState
             ? existingState.rebirthCount
             : 0,
+      baseIndex:
+        payload && Number.isInteger(payload.baseIndex)
+          ? payload.baseIndex
+          : existingState
+            ? existingState.baseIndex
+            : -1,
+      hasFletcherOnBase:
+        payload && typeof payload.hasFletcherOnBase !== "undefined"
+          ? Boolean(payload.hasFletcherOnBase)
+          : existingState
+            ? existingState.hasFletcherOnBase
+            : false,
+      hasEshdogMarleyOnBase:
+        payload && typeof payload.hasEshdogMarleyOnBase !== "undefined"
+          ? Boolean(payload.hasEshdogMarleyOnBase)
+          : existingState
+            ? existingState.hasEshdogMarleyOnBase
+            : false,
       position: payload.position,
     });
     if (!state) {
@@ -6745,6 +7428,9 @@ function normalizeNpcRarity(value) {
   }
   if (safe === "mythic") {
     return RARITY_MYTHIC;
+  }
+  if (safe === "secret") {
+    return RARITY_SECRET;
   }
   return "";
 }
@@ -7093,7 +7779,14 @@ function updateNpcVariantEffects(student, dt) {
 }
 
 function rollNpcRarityByWeights() {
-  const roll = Math.random() * 100;
+  let totalWeight = 0;
+  for (let i = 0; i < NPC_RARITY_SPAWN_WEIGHTS.length; i += 1) {
+    totalWeight += Math.max(0, Number(NPC_RARITY_SPAWN_WEIGHTS[i].chance) || 0);
+  }
+  if (totalWeight <= 0) {
+    return RARITY_COMMON;
+  }
+  const roll = Math.random() * totalWeight;
   let cumulative = 0;
   for (let i = 0; i < NPC_RARITY_SPAWN_WEIGHTS.length; i += 1) {
     const entry = NPC_RARITY_SPAWN_WEIGHTS[i];
@@ -7127,6 +7820,8 @@ function createNpcForRarity(rarity, options = {}) {
     npc = Math.random() < 0.5 ? createOscarNpcSafe() : createBeauNpcSafe();
   } else if (safeRarity === RARITY_MYTHIC) {
     npc = Math.random() < 0.5 ? createChristianNpcSafe() : createVinceNpcSafe();
+  } else if (safeRarity === RARITY_SECRET) {
+    npc = Math.random() < 0.5 ? createFletcherNpcSafe() : createEshdogMarleyNpcSafe();
   } else {
     npc = createLeo3DNpcSafe();
   }
@@ -7144,6 +7839,10 @@ function createNpcForName(name, options = {}) {
   let npc = null;
   if (safeName === LEO_NAME) {
     npc = createLeo3DNpcSafe();
+  } else if (safeName === FLETCHER_NAME) {
+    npc = createFletcherNpcSafe();
+  } else if (safeName === ESHDOG_MARLEY_NAME) {
+    npc = createEshdogMarleyNpcSafe();
   } else if (safeName === ZIGGY_NAME) {
     npc = createZiggyNpcSafe();
   } else if (safeName === VINCE_NAME) {
@@ -7237,12 +7936,16 @@ function placeNpcOnStreetStream(npc, initialOffsetZ = 0) {
   if (npc.assignedPadStandWorld && npc.assignedPadStandWorld.set) {
     npc.assignedPadStandWorld.set(0, 0, 0);
   }
+  if (npc.assignedPadWalkWorld && npc.assignedPadWalkWorld.set) {
+    npc.assignedPadWalkWorld.set(0, 0, 0);
+  }
   npc.assignedPadFacingYaw = Math.PI;
   npc.incomeAccumulator = 0;
   npc.incomePayoutCarry = 0;
   npc.pendingMoney = 0;
   npc.avatar.userData.isGuaranteedSpawn = false;
   npc.avatar.position.x = NPC_STREAM_LANE_X + (Math.random() * 2 - 1) * NPC_STREAM_X_JITTER;
+  npc.avatar.position.y = STREET_PATH_SURFACE_Y;
   npc.avatar.position.z = spawnZ;
   npc.avatar.userData.isStreetWalker = true;
   npc.avatar.userData.isPurchasedNpc = false;
@@ -7252,7 +7955,7 @@ function placeNpcOnStreetStream(npc, initialOffsetZ = 0) {
 }
 
 function spawnWeightedStreetNpc(initialOffsetZ = 0, forcedRarity = "", options = {}) {
-  if (!NPC_STREAM_ENABLED) {
+  if (!NPC_STREAM_ENABLED || NPC_SPAWNING_PAUSED) {
     return null;
   }
   const rarity = normalizeNpcRarity(forcedRarity) || rollNpcRarityByWeights();
@@ -7268,7 +7971,7 @@ function spawnWeightedStreetNpc(initialOffsetZ = 0, forcedRarity = "", options =
 }
 
 function seedInitialStreetNpcs() {
-  if (!NPC_STREAM_ENABLED) {
+  if (!NPC_STREAM_ENABLED || NPC_SPAWNING_PAUSED) {
     return;
   }
   spawnWeightedStreetNpc(0, RARITY_COMMON);
@@ -7276,7 +7979,7 @@ function seedInitialStreetNpcs() {
 }
 
 function updateStreetNpcSpawner(dt = 0) {
-  if (!NPC_STREAM_ENABLED || isMultiplayerStreetAuthorityEnabled()) {
+  if (!NPC_STREAM_ENABLED || NPC_SPAWNING_PAUSED || isMultiplayerStreetAuthorityEnabled()) {
     return;
   }
   if (dt > 0) {
@@ -7325,7 +8028,7 @@ function syncGuaranteedSpawnTimersToRewardProfile() {
 
 function triggerGuaranteedSpawn(timerId) {
   const config = GUARANTEED_SPAWN_TIMER_CONFIG[timerId];
-  if (!config || !NPC_STREAM_ENABLED) {
+  if (!config || !NPC_STREAM_ENABLED || NPC_SPAWNING_PAUSED) {
     return false;
   }
   const spawnedNpc = spawnWeightedStreetNpc(config.spawnOffsetZ, config.rarity, {
@@ -7344,6 +8047,10 @@ function triggerGuaranteedSpawn(timerId) {
 
 function updateGuaranteedSpawnTimers(dt = 0) {
   if (isMultiplayerStreetAuthorityEnabled()) {
+    updateSpawnTimerDisplay(false);
+    return;
+  }
+  if (NPC_SPAWNING_PAUSED) {
     updateSpawnTimerDisplay(false);
     return;
   }
@@ -7539,6 +8246,9 @@ function getNpcRarityTextColor(rarity) {
   }
   if (safeRarity === RARITY_MYTHIC) {
     return "#ff4d4d";
+  }
+  if (safeRarity === RARITY_SECRET) {
+    return "#b8bcc4";
   }
   return "#d8f4ff";
 }
@@ -7905,7 +8615,7 @@ function createLeoStudentNpc(options = {}) {
   const npcEconomy = getBaseEconomyForNpcName(npcBaseName, npcRarity);
   const npcName = createNpcDisplayName(npcBaseName, npcRarity);
 
-  avatar.position.set(laneX, 0, startZ);
+  avatar.position.set(laneX, STREET_PATH_SURFACE_Y, startZ);
   avatar.scale.setScalar(LEO_SCALE);
 
   const skinMaterials = avatar.userData.skinMaterials || [];
@@ -8053,6 +8763,7 @@ function createLeoStudentNpc(options = {}) {
     assignedPadIndex: -1,
     assignedPadWorld: new THREE.Vector3(),
     assignedPadStandWorld: new THREE.Vector3(),
+    assignedPadWalkWorld: new THREE.Vector3(),
     assignedPadFacingYaw: Math.PI,
     incomeAccumulator: 0,
     incomePayoutCarry: 0,
@@ -8088,6 +8799,106 @@ function createLeo3DNpcSafe() {
   return null;
 }
 
+function createEshdogMarleyNpcSafe() {
+  return createPreviewClassmateNpcSafe({
+    name: ESHDOG_MARLEY_NAME,
+    rarity: RARITY_SECRET,
+    laneX: LEO_DEFAULT_LANE_X,
+    startZ: LEO_DEFAULT_START_Z,
+    skinTone: ESHDOG_MARLEY_SKIN_TONE,
+    applyHair(avatar) {
+      attachEshdogMarleyHair(avatar, {
+        baseColor: ESHDOG_MARLEY_HAIR_COLOR,
+        highlightColor: ESHDOG_MARLEY_HAIR_HIGHLIGHT,
+        yOffset: 0,
+      });
+    },
+    applyLook(avatar) {
+      applyEshdogMarleyOutfit(avatar);
+      applyEshdogMarleyShorts(avatar);
+    },
+    flagKey: "isEshdogMarleyNpc",
+  });
+}
+
+function createPausedBaldLeoNpcSafe() {
+  return createPreviewClassmateNpcSafe({
+    name: FLETCHER_NAME,
+    rarity: RARITY_SECRET,
+    laneX: LEO_DEFAULT_LANE_X,
+    startZ: LEO_DEFAULT_START_Z,
+    skinTone: PAUSED_BALD_LEO_SKIN_TONE,
+    applyHair(avatar) {
+      attachLedgerHair(avatar, {
+        baseColor: FLETCHER_HAIR_COLOR,
+        highlightColor: FLETCHER_HAIR_HIGHLIGHT,
+        yOffset: 0,
+      });
+
+      const hairMesh = avatar && avatar.userData ? avatar.userData.hairMesh : null;
+      if (hairMesh && hairMesh.scale) {
+        hairMesh.scale.set(hairMesh.scale.x * 1.01, hairMesh.scale.y * 1.02, hairMesh.scale.z * 1.02);
+      }
+      if (hairMesh) {
+        hairMesh.traverse((node) => {
+          if (!node || !node.isMesh || !node.position) {
+            return;
+          }
+          if (Math.abs(node.position.x) > 0.34) {
+            node.position.x *= 0.8;
+            if (node.scale) {
+              node.scale.x *= 0.88;
+            }
+          }
+        });
+
+        let mulletMaterial = null;
+        hairMesh.traverse((node) => {
+          if (!mulletMaterial && node && node.isMesh && node.material) {
+            mulletMaterial = node.material;
+          }
+        });
+
+        if (mulletMaterial) {
+          const backMain = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.42, 4, 8), mulletMaterial);
+          backMain.position.set(0, -0.1, -0.34);
+          backMain.rotation.x = 0.05;
+          backMain.scale.set(1.0, 1.24, 0.82);
+          backMain.castShadow = true;
+          backMain.receiveShadow = false;
+          hairMesh.add(backMain);
+
+          const backLeft = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.24, 4, 8), mulletMaterial);
+          backLeft.position.set(-0.18, -0.06, -0.29);
+          backLeft.rotation.x = 0.08;
+          backLeft.rotation.z = -0.08;
+          backLeft.scale.set(0.92, 1.12, 0.82);
+          backLeft.castShadow = true;
+          backLeft.receiveShadow = false;
+          hairMesh.add(backLeft);
+
+          const backRight = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.24, 4, 8), mulletMaterial);
+          backRight.position.set(0.18, -0.06, -0.29);
+          backRight.rotation.x = 0.08;
+          backRight.rotation.z = 0.08;
+          backRight.scale.set(0.92, 1.12, 0.82);
+          backRight.castShadow = true;
+          backRight.receiveShadow = false;
+          hairMesh.add(backRight);
+        }
+      }
+    },
+    applyLook(avatar) {
+      applyFletcherSkinSpots(avatar);
+    },
+    flagKey: "isPausedBaldLeoNpc",
+  });
+}
+
+function createFletcherNpcSafe() {
+  return createPausedBaldLeoNpcSafe();
+}
+
 function applyNpcSkinTone(avatar, skinTone) {
   if (!avatar || !avatar.userData) {
     return;
@@ -8118,6 +8929,7 @@ function resetNpcIdentityFlags(avatar) {
   avatar.userData.isChristianNpc = false;
   avatar.userData.isBeauNpc = false;
   avatar.userData.isAdonis2Npc = false;
+  avatar.userData.isEshdogMarleyNpc = false;
   avatar.userData.isZiggyNpc = false;
   avatar.userData.isVinceNpc = false;
   avatar.userData.isVince2Npc = false;
@@ -8995,6 +9807,54 @@ function ensureRosterNpcExists(npcName, factory) {
   scene.add(npc.avatar);
 }
 
+function ensurePausedStreetNpcExists(npcName, factory, options = {}) {
+  const safeNpcName = typeof npcName === "string" ? npcName.trim() : "";
+  const shouldWalk = options.walking === true;
+  if (!safeNpcName || typeof factory !== "function") {
+    return;
+  }
+  const existingNpc = studentNpcs.find((npc) => {
+    if (!npc || !npc.avatar || !npc.avatar.userData) {
+      return false;
+    }
+    if (npc.purchaseState !== "forSale" || !npc.avatar.userData.isStreetWalker) {
+      return false;
+    }
+    const baseName = String(npc.avatar.userData.npcBaseName || npc.avatar.userData.npcDisplayName || "").trim();
+    return baseName === safeNpcName;
+  });
+  if (existingNpc) {
+    if (shouldWalk && existingNpc.purchaseState === "forSale" && existingNpc.avatar.userData.isStreetWalker) {
+      existingNpc.speed = LEO_PATROL_SPEED;
+      existingNpc.direction = 1;
+      existingNpc.maxZ = NPC_STREAM_END_Z;
+      existingNpc.avatar.position.y = STREET_PATH_SURFACE_Y;
+    }
+    return;
+  }
+
+  const npc = factory();
+  if (!npc || !npc.avatar) {
+    return;
+  }
+  if (!placeNpcOnStreetStream(npc, options.spawnOffsetZ || 0)) {
+    return;
+  }
+
+  const forwardOffsetZ = Number.isFinite(options.forwardOffsetZ) ? options.forwardOffsetZ : 8;
+  npc.avatar.position.z = Math.min(NPC_STREAM_END_Z - 1, npc.avatar.position.z + forwardOffsetZ);
+  npc.speed = shouldWalk ? LEO_PATROL_SPEED : 0;
+  npc.minZ = npc.avatar.position.z;
+  npc.maxZ = NPC_STREAM_END_Z;
+  npc.direction = 1;
+  npc.avatar.userData.isStreetWalker = true;
+  npc.avatar.userData.isPurchasedNpc = false;
+  npc.avatar.userData.purchaseState = "forSale";
+
+  studentNpcs.push(npc);
+  scene.add(npc.avatar);
+}
+
 function ensureLeoNpcExists(dt = 0) {
   if (dt > 0) {
     leoRespawnCooldown = Math.max(0, leoRespawnCooldown - dt);
@@ -9047,7 +9907,25 @@ function updateStudentNpcs(dt) {
   }
 
   if (NPC_STREAM_ENABLED) {
-    updateStreetNpcSpawner(dt);
+    if (NPC_SPAWNING_PAUSED) {
+      for (let i = studentNpcs.length - 1; i >= 0; i -= 1) {
+        const npc = studentNpcs[i];
+        if (!npc || !npc.avatar || !npc.avatar.userData) {
+          continue;
+        }
+        const baseName = String(npc.avatar.userData.npcBaseName || npc.avatar.userData.npcDisplayName || "").trim();
+        if (baseName !== ESHDOG_MARLEY_NAME || npc.purchaseState !== "forSale" || !npc.avatar.userData.isStreetWalker) {
+          continue;
+        }
+        removeStudentNpcFromScene(npc);
+      }
+      ensurePausedStreetNpcExists(FLETCHER_NAME, createPausedBaldLeoNpcSafe, {
+        forwardOffsetZ: 8,
+        walking: false,
+      });
+    } else {
+      updateStreetNpcSpawner(dt);
+    }
   } else {
     ensureRosterNpcExists(ZIGGY_NAME, createZiggyNpcSafe);
     ensureRosterNpcExists(VINCE_NAME, createVinceNpcSafe);
@@ -9105,6 +9983,39 @@ function updateStudentNpcs(dt) {
           });
         } catch (error) {
           console.error("Christian hair recovery failed", error);
+        }
+      }
+    } else if (avatar.userData.isEshdogMarleyNpc) {
+      const anchor = avatar.userData.hairAnchor;
+      const hasHair = !!(avatar.userData.hairMesh && anchor && anchor.children.length > 0);
+      const needsHairRefresh = avatar.userData.ziggyHairBuild !== BUILD_ID;
+      const needsOutfitRefresh = avatar.userData.eshdogMarleyOutfitBuild !== BUILD_ID;
+      const shortsPieces = Array.isArray(avatar.userData.eshdogMarleyShorts) ? avatar.userData.eshdogMarleyShorts : [];
+      const hasShorts = shortsPieces.length >= 2 && shortsPieces.every((piece) => piece && piece.parent);
+      const needsShortsRefresh = avatar.userData.eshdogMarleyShortsBuild !== BUILD_ID;
+      if (!hasHair || needsHairRefresh) {
+        try {
+          attachEshdogMarleyHair(avatar, {
+            baseColor: avatar.userData.ziggyHairBaseColor || ESHDOG_MARLEY_HAIR_COLOR,
+            highlightColor: avatar.userData.ziggyHairHighlightColor || ESHDOG_MARLEY_HAIR_HIGHLIGHT,
+            yOffset: Number.isFinite(avatar.userData.ziggyHairYOffset) ? avatar.userData.ziggyHairYOffset : 0,
+          });
+        } catch (error) {
+          console.error("Eshdog Marley hair recovery failed", error);
+        }
+      }
+      if (needsOutfitRefresh) {
+        try {
+          applyEshdogMarleyOutfit(avatar);
+        } catch (error) {
+          console.error("Eshdog Marley outfit recovery failed", error);
+        }
+      }
+      if (!hasShorts || needsShortsRefresh) {
+        try {
+          applyEshdogMarleyShorts(avatar);
+        } catch (error) {
+          console.error("Eshdog Marley shorts recovery failed", error);
         }
       }
     } else if (avatar.userData.isZiggyNpc) {
@@ -9220,7 +10131,7 @@ function updateStudentNpcs(dt) {
     if (NPC_SHOWCASE_MODE && purchaseState === "forSale") {
       const lineCenter = (studentNpcs.length - 1) * 0.5;
       avatar.position.x = SPAWN_X + (index - lineCenter) * NPC_SHOWCASE_SPACING_X;
-      avatar.position.y = 0;
+      avatar.position.y = STREET_PATH_SURFACE_Y;
       avatar.position.z = SPAWN_Z + NPC_SHOWCASE_BEHIND_SPAWN_OFFSET_Z;
       student.speed = 0;
       student.direction = -1;
@@ -9229,7 +10140,15 @@ function updateStudentNpcs(dt) {
       forcedYaw = Math.PI;
     } else if (purchaseState === "walkingToPad") {
       refreshNpcAssignedPadTargets(student);
+      const secondFloorWalkTarget =
+        isSecondFloorIncomePadIndex(student.assignedPadIndex) &&
+        student.assignedPadWalkWorld &&
+        Number.isFinite(student.assignedPadWalkWorld.x) &&
+        Number.isFinite(student.assignedPadWalkWorld.z)
+          ? student.assignedPadWalkWorld
+          : null;
       const targetPad =
+        secondFloorWalkTarget ||
         getNpcAssignedBaseEntryWorld(student) ||
         (student.assignedPadStandWorld &&
         Number.isFinite(student.assignedPadStandWorld.x) &&
@@ -9240,7 +10159,8 @@ function updateStudentNpcs(dt) {
         const toX = targetPad.x - avatar.position.x;
         const toZ = targetPad.z - avatar.position.z;
         const distanceToPad = Math.hypot(toX, toZ);
-        if (distanceToPad <= LEO_PAD_REACH_DISTANCE) {
+        const walkReachDistance = secondFloorWalkTarget ? SECOND_FLOOR_BASE_ENTRY_TELEPORT_DISTANCE : LEO_PAD_REACH_DISTANCE;
+        if (distanceToPad <= walkReachDistance) {
           const standTarget =
             student.assignedPadStandWorld &&
             Number.isFinite(student.assignedPadStandWorld.x) &&
@@ -9283,6 +10203,9 @@ function updateStudentNpcs(dt) {
         if (student.assignedPadStandWorld && student.assignedPadStandWorld.set) {
           student.assignedPadStandWorld.set(0, 0, 0);
         }
+        if (student.assignedPadWalkWorld && student.assignedPadWalkWorld.set) {
+          student.assignedPadWalkWorld.set(0, 0, 0);
+        }
         student.assignedPadFacingYaw = Math.PI;
       }
     } else if (purchaseState === "generating") {
@@ -9303,6 +10226,7 @@ function updateStudentNpcs(dt) {
       student.speed = 0;
       forcedYaw = Number.isFinite(student.assignedPadFacingYaw) ? student.assignedPadFacingYaw : Math.PI;
     } else if (NPC_STREAM_ENABLED && avatar.userData.isStreetWalker) {
+      avatar.position.y = STREET_PATH_SURFACE_Y;
       if (isNetworkStreetCharacter(student)) {
         syncNetworkStreetCharacterMotion(student);
       } else {
@@ -10524,6 +11448,90 @@ function getSaveSlotForBaseIndex(baseIndex) {
   return null;
 }
 
+function getOwnedNpcCountMapForBase(baseIndex, options = {}) {
+  const counts = new Map();
+  if (!Number.isInteger(baseIndex) || baseIndex < 0) {
+    return counts;
+  }
+  const requireGenerating = options.requireGenerating === true;
+  for (const student of studentNpcs) {
+    if (!student || !student.avatar || !student.avatar.userData) {
+      continue;
+    }
+    if (requireGenerating ? student.purchaseState !== "generating" : student.purchaseState === "forSale") {
+      continue;
+    }
+    if (student.assignedBaseIndex !== baseIndex) {
+      continue;
+    }
+    const npcBaseName = String(student.avatar.userData.npcBaseName || student.avatar.userData.npcDisplayName || "").trim();
+    if (!npcBaseName) {
+      continue;
+    }
+    counts.set(npcBaseName, (counts.get(npcBaseName) || 0) + 1);
+  }
+  return counts;
+}
+
+function getRebirthRequirementEntries(stage, suffix) {
+  if (!stage || (suffix !== "A" && suffix !== "B")) {
+    return [];
+  }
+
+  const groupKey = suffix === "A" ? "requiredNpcAGroupNames" : "requiredNpcBGroupNames";
+  const nameKey = suffix === "A" ? "requiredNpcAName" : "requiredNpcBName";
+  const countKey = suffix === "A" ? "requiredNpcACount" : "requiredNpcBCount";
+  const groupNames = Array.isArray(stage[groupKey])
+    ? stage[groupKey].map((name) => String(name || "").trim()).filter(Boolean)
+    : [];
+  if (groupNames.length) {
+    return groupNames;
+  }
+
+  const singleName = String(stage[nameKey] || "").trim();
+  const requiredCount = clampInt(stage[countKey], 0, 99, 0);
+  if (!singleName || requiredCount <= 0) {
+    return [];
+  }
+  return new Array(requiredCount).fill(singleName);
+}
+
+function formatRebirthRequirementLabel(entries) {
+  if (!Array.isArray(entries) || !entries.length) {
+    return "";
+  }
+  return Array.from(new Set(entries.map((entry) => String(entry || "").trim()).filter(Boolean))).join(" + ");
+}
+
+function getOwnedNpcRequirementProgressForBase(baseIndex, entries) {
+  if (!Array.isArray(entries) || !entries.length) {
+    return 0;
+  }
+  const ownedCounts = getOwnedNpcCountMapForBase(baseIndex);
+  let owned = 0;
+  for (let i = 0; i < entries.length; i += 1) {
+    const safeName = String(entries[i] || "").trim();
+    const availableCount = ownedCounts.get(safeName) || 0;
+    if (availableCount <= 0) {
+      continue;
+    }
+    owned += 1;
+    ownedCounts.set(safeName, availableCount - 1);
+  }
+  return owned;
+}
+
+function doesBaseHaveGeneratingNpc(baseIndex, npcName) {
+  if (!Number.isInteger(baseIndex) || baseIndex < 0) {
+    return false;
+  }
+  const safeNpcName = String(npcName || "").trim();
+  if (!safeNpcName) {
+    return false;
+  }
+  return (getOwnedNpcCountMapForBase(baseIndex, { requireGenerating: true }).get(safeNpcName) || 0) > 0;
+}
+
 function getSecondFloorPadBonusForRebirthCount(rebirthCount) {
   const safeRebirthCount = clampInt(rebirthCount, 0, SECOND_FLOOR_PAD_BONUS_BY_REBIRTH_COUNT.length - 1, 0);
   return clampInt(SECOND_FLOOR_PAD_BONUS_BY_REBIRTH_COUNT[safeRebirthCount], 0, SECOND_FLOOR_TOTAL_PAD_SLOTS, 0);
@@ -10731,13 +11739,17 @@ function moveSoldNpcToStreamStart(student) {
   if (!student.assignedPadStandWorld || !student.assignedPadStandWorld.set) {
     student.assignedPadStandWorld = new THREE.Vector3();
   }
+  if (!student.assignedPadWalkWorld || !student.assignedPadWalkWorld.set) {
+    student.assignedPadWalkWorld = new THREE.Vector3();
+  }
   student.assignedPadWorld.set(0, 0, 0);
   student.assignedPadStandWorld.set(0, 0, 0);
+  student.assignedPadWalkWorld.set(0, 0, 0);
   student.assignedPadFacingYaw = PAD_DISPLAY_FACING_YAW;
 
   student.avatar.position.x = NPC_STREAM_LANE_X + (Math.random() * 2 - 1) * NPC_STREAM_X_JITTER;
   student.avatar.position.z = NPC_STREAM_START_Z;
-  student.avatar.position.y = 0;
+  student.avatar.position.y = STREET_PATH_SURFACE_Y;
   student.avatar.userData.isStreetWalker = true;
   student.avatar.userData.isPurchasedNpc = false;
   student.avatar.userData.purchaseState = "forSale";
@@ -10746,30 +11758,12 @@ function moveSoldNpcToStreamStart(student) {
 }
 
 function getOwnedNpcCountForActiveSlot(targetNpcName) {
-  const activeSlot = getActiveSaveSlot();
-  const safeTargetNpcName = String(targetNpcName || "");
-  if (!activeSlot || !safeTargetNpcName) {
+  const activeBaseIndex = getActivePlayerBaseIndex();
+  const safeTargetNpcName = String(targetNpcName || "").trim();
+  if (activeBaseIndex < 0 || !safeTargetNpcName) {
     return 0;
   }
-  const activeBaseIndex = ensureSlotBaseAssignment(activeSlot, activeSaveSlotIndex);
-  if (activeBaseIndex < 0) {
-    return 0;
-  }
-
-  let ownedCount = 0;
-  for (const student of studentNpcs) {
-    if (!student || student.purchaseState === "forSale" || !student.avatar || !student.avatar.userData) {
-      continue;
-    }
-    if (student.assignedBaseIndex !== activeBaseIndex) {
-      continue;
-    }
-    const npcBaseName = String(student.avatar.userData.npcBaseName || student.avatar.userData.npcDisplayName || "");
-    if (npcBaseName === safeTargetNpcName) {
-      ownedCount += 1;
-    }
-  }
-  return ownedCount;
+  return getOwnedNpcCountMapForBase(activeBaseIndex).get(safeTargetNpcName) || 0;
 }
 
 function getActiveRebirthStatus() {
@@ -10779,14 +11773,17 @@ function getActiveRebirthStatus() {
   const currentMultiplier = getSlotRebirthMultiplier(activeSlot);
   const nextMultiplier = getNextRebirthMultiplier(activeSlot);
   const moneyAmount = activeSlot ? clampInt(activeSlot.money, 0, MAX_CURRENCY_VALUE, 0) : 0;
-  const npcAName = activeStage ? activeStage.requiredNpcAName : "";
-  const npcACountRequired = activeStage ? activeStage.requiredNpcACount : 0;
-  const npcBName = activeStage ? activeStage.requiredNpcBName : "";
-  const npcBCountRequired = activeStage ? activeStage.requiredNpcBCount : 0;
-  const hasFirstRequirement = Boolean(npcAName && npcACountRequired > 0);
-  const hasSecondRequirement = Boolean(npcBName && npcBCountRequired > 0);
-  const npcACountOwned = activeSlot && hasFirstRequirement ? getOwnedNpcCountForActiveSlot(npcAName) : 0;
-  const npcBCountOwned = activeSlot && hasSecondRequirement ? getOwnedNpcCountForActiveSlot(npcBName) : 0;
+  const activeBaseIndex = activeSlot ? ensureSlotBaseAssignment(activeSlot, activeSaveSlotIndex) : -1;
+  const npcAEntries = activeStage ? getRebirthRequirementEntries(activeStage, "A") : [];
+  const npcBEntries = activeStage ? getRebirthRequirementEntries(activeStage, "B") : [];
+  const npcAName = formatRebirthRequirementLabel(npcAEntries);
+  const npcACountRequired = npcAEntries.length;
+  const npcBName = formatRebirthRequirementLabel(npcBEntries);
+  const npcBCountRequired = npcBEntries.length;
+  const hasFirstRequirement = npcACountRequired > 0;
+  const hasSecondRequirement = npcBCountRequired > 0;
+  const npcACountOwned = activeBaseIndex >= 0 && hasFirstRequirement ? getOwnedNpcRequirementProgressForBase(activeBaseIndex, npcAEntries) : 0;
+  const npcBCountOwned = activeBaseIndex >= 0 && hasSecondRequirement ? getOwnedNpcRequirementProgressForBase(activeBaseIndex, npcBEntries) : 0;
   const requiredMoney = activeStage ? activeStage.requiredMoney : 0;
   const hasMoney = Boolean(activeStage) && moneyAmount >= requiredMoney;
   const hasNpcA = Boolean(activeStage) && (!hasFirstRequirement || npcACountOwned >= npcACountRequired);
@@ -10800,9 +11797,11 @@ function getActiveRebirthStatus() {
     nextMultiplier,
     moneyAmount,
     requiredMoney,
+    npcAEntries,
     npcAName,
     npcACountRequired,
     npcACountOwned,
+    npcBEntries,
     npcBName,
     npcBCountRequired,
     npcBCountOwned,
@@ -10920,6 +11919,7 @@ function confirmSellSelectedClassmate() {
   closeSellConfirmModal();
   saveSaveSlotsToStorage();
   renderSaveSlotsUi();
+  syncMultiplayerProfile();
 }
 
 function getNearestSellableNpcForActiveSlot() {
@@ -11024,6 +12024,10 @@ function getNpcAssignedBaseEntryWorld(student) {
     return null;
   }
   return basePad.padWorld;
+}
+
+function isSecondFloorIncomePadIndex(padIndex) {
+  return Number.isInteger(padIndex) && padIndex >= BASE_UNLOCKED_INCOME_PAD_SLOTS;
 }
 
 function getBasePadSideSign(basePad, padIndex) {
@@ -11171,6 +12175,9 @@ function applyNpcAssignedPadTargets(student, basePad, padIndex, padWorld) {
   if (!student.assignedPadStandWorld || !student.assignedPadStandWorld.copy) {
     student.assignedPadStandWorld = new THREE.Vector3();
   }
+  if (!student.assignedPadWalkWorld || !student.assignedPadWalkWorld.copy) {
+    student.assignedPadWalkWorld = new THREE.Vector3();
+  }
 
   let padTopY = Number.isFinite(padWorld.y) ? padWorld.y : 0;
   let padHalfX = 0;
@@ -11235,6 +12242,18 @@ function applyNpcAssignedPadTargets(student, basePad, padIndex, padWorld) {
       student.assignedPadStandWorld.z = tmpPadDisplayAnchor.z - tmpModelCenterOffsetWorld.z;
       student.assignedPadStandWorld.y = padTopY + PAD_STAND_CLEARANCE_Y - metrics.localBottomY * scaleY;
     }
+  }
+
+  if (
+    isSecondFloorIncomePadIndex(padIndex) &&
+    basePad &&
+    basePad.padWorld &&
+    Number.isFinite(basePad.padWorld.x) &&
+    Number.isFinite(basePad.padWorld.z)
+  ) {
+    student.assignedPadWalkWorld.copy(basePad.padWorld);
+  } else {
+    student.assignedPadWalkWorld.set(0, 0, 0);
   }
 }
 
@@ -11530,6 +12549,92 @@ function getActivePlayerBaseIndex() {
   return ensureSlotBaseAssignment(slot, activeSaveSlotIndex);
 }
 
+function getActiveBasePassiveFlags() {
+  const activeBaseIndex = getActivePlayerBaseIndex();
+  return {
+    baseIndex: activeBaseIndex,
+    hasFletcherOnBase: doesBaseHaveGeneratingNpc(activeBaseIndex, FLETCHER_NAME),
+    hasEshdogMarleyOnBase: doesBaseHaveGeneratingNpc(activeBaseIndex, ESHDOG_MARLEY_NAME),
+  };
+}
+
+function isWorldPositionInsideBaseInterior(baseIndex, worldPosition) {
+  if (!Number.isInteger(baseIndex) || baseIndex < 0 || !worldPosition) {
+    return false;
+  }
+  const basePad = streetBasePads[baseIndex];
+  const base = basePad && basePad.base;
+  const interiorBounds = base && base.userData ? base.userData.interiorWallBounds : null;
+  if (!base || !interiorBounds) {
+    return false;
+  }
+
+  const localPosition = tmpPlacementCenter.copy(worldPosition);
+  base.worldToLocal(localPosition);
+  const margin = 0.28;
+  return (
+    localPosition.x >= interiorBounds.minX - margin &&
+    localPosition.x <= interiorBounds.maxX + margin &&
+    localPosition.z >= interiorBounds.minZ - margin &&
+    localPosition.z <= interiorBounds.maxZ + margin
+  );
+}
+
+function isBaseProtectedByEshdog(baseIndex) {
+  if (!Number.isInteger(baseIndex) || baseIndex < 0) {
+    return false;
+  }
+  if (doesBaseHaveGeneratingNpc(baseIndex, ESHDOG_MARLEY_NAME)) {
+    return true;
+  }
+  if (!multiplayerConnected) {
+    return false;
+  }
+  for (const state of remotePlayers.values()) {
+    if (!state || state.baseIndex !== baseIndex) {
+      continue;
+    }
+    if (state.hasEshdogMarleyOnBase) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function triggerEshdogFighterSlow() {
+  if (!multiplayerConnected) {
+    return;
+  }
+  eshdogFighterSlowTimer = Math.max(eshdogFighterSlowTimer, ESHDOG_FIGHTER_DURATION_SECONDS);
+}
+
+function updateFletcherSnitchAlert() {
+  const activeBaseIndex = getActivePlayerBaseIndex();
+  if (activeBaseIndex < 0 || !doesBaseHaveGeneratingNpc(activeBaseIndex, FLETCHER_NAME)) {
+    activeFletcherIntruderSocketIds.clear();
+    return;
+  }
+
+  const nextIntruderIds = new Set();
+  for (const state of remotePlayers.values()) {
+    if (!state || !state.socketId || !state.targetPosition) {
+      continue;
+    }
+    if (!isWorldPositionInsideBaseInterior(activeBaseIndex, state.targetPosition)) {
+      continue;
+    }
+    nextIntruderIds.add(state.socketId);
+    if (!activeFletcherIntruderSocketIds.has(state.socketId)) {
+      showSpawnNotification(FLETCHER_SNITCH_ALERT_TEXT);
+    }
+  }
+
+  activeFletcherIntruderSocketIds.clear();
+  for (const socketId of nextIntruderIds) {
+    activeFletcherIntruderSocketIds.add(socketId);
+  }
+}
+
 function updateBaseLockDoors(dt) {
   const ignoredDeltaTime = dt;
   void ignoredDeltaTime;
@@ -11579,7 +12684,7 @@ function applyLeoStateToNpc(student, forceReposition = false) {
     student.speed = LEO_PATROL_SPEED;
     if (forceReposition) {
       student.direction = 1;
-      student.avatar.position.set(LEO_DEFAULT_LANE_X, 0, LEO_DEFAULT_START_Z);
+      student.avatar.position.set(LEO_DEFAULT_LANE_X, STREET_PATH_SURFACE_Y, LEO_DEFAULT_START_Z);
     }
     return;
   }
@@ -11596,14 +12701,18 @@ function applyLeoStateToNpc(student, forceReposition = false) {
     student.speed = LEO_WALK_TO_PAD_SPEED;
     if (forceReposition) {
       student.direction = 1;
-      student.avatar.position.set(LEO_DEFAULT_LANE_X, 0, LEO_DEFAULT_START_Z);
+      student.avatar.position.set(LEO_DEFAULT_LANE_X, STREET_PATH_SURFACE_Y, LEO_DEFAULT_START_Z);
     }
     return;
   }
 
   student.speed = 0;
   if (forceReposition || leoState === LEO_STATE_GENERATING) {
-    student.avatar.position.set(targetPad.x, 0, targetPad.z);
+    student.avatar.position.set(
+      targetPad.x,
+      Number.isFinite(targetPad.y) ? targetPad.y : WORLD_GROUND_SURFACE_Y,
+      targetPad.z
+    );
   }
 }
 
@@ -12378,6 +13487,25 @@ function saveOneTimeProfileTopupState(state) {
   }
 }
 
+function loadOneTimeProfileRebirthGrantState() {
+  try {
+    const raw = window.localStorage.getItem(ONE_TIME_PROFILE_REBIRTH_GRANT_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    console.warn("Failed to load one-time profile rebirth grant state.", error);
+    return {};
+  }
+}
+
+function saveOneTimeProfileRebirthGrantState(state) {
+  try {
+    window.localStorage.setItem(ONE_TIME_PROFILE_REBIRTH_GRANT_STORAGE_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.warn("Failed to save one-time profile rebirth grant state.", error);
+  }
+}
+
 function applyOneTimeProfileTopups() {
   if (!Array.isArray(saveSlots) || !saveSlots.length || !ONE_TIME_PROFILE_TOPUPS.length) {
     return false;
@@ -12416,6 +13544,66 @@ function applyOneTimeProfileTopups() {
 
   if (stateChanged) {
     saveOneTimeProfileTopupState(appliedState);
+  }
+  return changed;
+}
+
+function applyOneTimeProfileRebirthGrants() {
+  if (!Array.isArray(saveSlots) || !saveSlots.length || !ONE_TIME_PROFILE_REBIRTH_GRANTS.length) {
+    return false;
+  }
+
+  const appliedState = loadOneTimeProfileRebirthGrantState();
+  let changed = false;
+  let stateChanged = false;
+
+  for (const grant of ONE_TIME_PROFILE_REBIRTH_GRANTS) {
+    if (!grant || typeof grant.username !== "string") {
+      continue;
+    }
+    const safeUsername = sanitizeNameTag(grant.username);
+    if (!safeUsername || appliedState[safeUsername]) {
+      continue;
+    }
+    const targetRebirthCount = clampInt(grant.rebirthCount, 0, REBIRTH_STAGE_CONFIG.length, 0);
+    const targetRebirthMultiplier = getRebirthMultiplierForCount(targetRebirthCount);
+    const shouldUnlockSecondFloor = getSecondFloorPadBonusForRebirthCount(targetRebirthCount) > 0;
+
+    for (let i = 0; i < saveSlots.length; i += 1) {
+      const slot = saveSlots[i];
+      if (!slot || !slot.used) {
+        continue;
+      }
+      const slotUsername = sanitizeNameTag(slot.username || slot.name || (slot.avatar && slot.avatar.username) || "");
+      if (slotUsername !== safeUsername) {
+        continue;
+      }
+
+      if (slot.rebirthCount !== targetRebirthCount) {
+        slot.rebirthCount = targetRebirthCount;
+        changed = true;
+      }
+      if (slot.rebirthMultiplier !== targetRebirthMultiplier) {
+        slot.rebirthMultiplier = targetRebirthMultiplier;
+        changed = true;
+      }
+      if (slot.secondFloorUnlocked !== shouldUnlockSecondFloor) {
+        slot.secondFloorUnlocked = shouldUnlockSecondFloor;
+        changed = true;
+      }
+      if (slot.floorMigrationApplied !== true) {
+        slot.floorMigrationApplied = true;
+        changed = true;
+      }
+
+      appliedState[safeUsername] = true;
+      stateChanged = true;
+      break;
+    }
+  }
+
+  if (stateChanged) {
+    saveOneTimeProfileRebirthGrantState(appliedState);
   }
   return changed;
 }
@@ -12533,6 +13721,9 @@ function loadSaveSlotsFromStorage() {
   }
   didMigrate = migrateSaveSlotsToSingleProfile();
   if (applyOneTimeProfileTopups()) {
+    didMigrate = true;
+  }
+  if (applyOneTimeProfileRebirthGrants()) {
     didMigrate = true;
   }
   if (applySecondFloorUnlockMigration()) {
@@ -12769,6 +13960,101 @@ function openPlayMenuPanel() {
   showMenuPanel("playPanel");
   if (menuMainEl) {
     menuMainEl.scrollTop = 0;
+  }
+}
+
+function handlePlayMenuButtonClick() {
+  const playPanelIsAlreadyOpen = Boolean(
+    menuMainEl &&
+      !menuMainEl.classList.contains("hidden") &&
+      playPanelEl &&
+      playPanelEl.classList.contains("active")
+  );
+  if (playPanelIsAlreadyOpen) {
+    loadSelectedSaveSlot();
+    return;
+  }
+  openPlayMenuPanel();
+}
+
+function activateMenuTab(panelId) {
+  if (typeof panelId !== "string" || !panelId) {
+    return;
+  }
+  const now = typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+  if (lastMenuTabActivationId === panelId && now - lastMenuTabActivationTimeMs < 240) {
+    return;
+  }
+  lastMenuTabActivationId = panelId;
+  lastMenuTabActivationTimeMs = now;
+
+  if (panelId === "playPanel") {
+    handlePlayMenuButtonClick();
+    return;
+  }
+  showMenuPanel(panelId);
+}
+
+function activateMenuTabAtPoint(clientX, clientY) {
+  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+    return false;
+  }
+  for (const buttonEl of menuTabButtonEls) {
+    if (!buttonEl || typeof buttonEl.getBoundingClientRect !== "function") {
+      continue;
+    }
+    const rect = buttonEl.getBoundingClientRect();
+    if (
+      clientX >= rect.left &&
+      clientX <= rect.right &&
+      clientY >= rect.top &&
+      clientY <= rect.bottom
+    ) {
+      activateMenuTab(buttonEl.dataset.menuTab);
+      return true;
+    }
+  }
+  return false;
+}
+
+function bindMenuNavigation() {
+  if (menuNavigationBound) {
+    return;
+  }
+  menuNavigationBound = true;
+
+  menuTabButtonEls.forEach((buttonEl) => {
+    buttonEl.addEventListener("click", () => {
+      activateMenuTab(buttonEl.dataset.menuTab);
+    });
+  });
+
+  if (menuNavEl) {
+    menuNavEl.addEventListener(
+      "pointerup",
+      (event) => {
+        const targetButton = event.target instanceof Element ? event.target.closest("[data-menu-tab]") : null;
+        if (!targetButton) {
+          return;
+        }
+        event.preventDefault();
+        activateMenuTab(targetButton.dataset.menuTab);
+      },
+      true
+    );
+  }
+
+  if (menuScreenEl) {
+    const handleMenuScreenNavPointer = (event) => {
+      if (!menuScreenEl || menuScreenEl.classList.contains("hidden")) {
+        return;
+      }
+      if (activateMenuTabAtPoint(event.clientX, event.clientY)) {
+        event.preventDefault();
+      }
+    };
+    menuScreenEl.addEventListener("pointerup", handleMenuScreenNavPointer, true);
+    menuScreenEl.addEventListener("click", handleMenuScreenNavPointer, true);
   }
 }
 
@@ -13164,6 +14450,7 @@ function loadSelectedSaveSlot() {
     renderSettingsUi();
     applyLeoStateFromActiveSlot();
     restoreOwnedClassmatesFromSaveSlots();
+    syncMultiplayerProfile();
     saveSaveSlotsToStorage();
     renderSaveSlotsUi();
     syncUsernameRequirementOverlay();
@@ -13204,15 +14491,7 @@ function initMenuAndSettings() {
     saveSaveSlotsToStorage();
   }
 
-  menuTabButtonEls.forEach((buttonEl) => {
-    buttonEl.addEventListener("click", () => {
-      if (buttonEl.dataset.menuTab === "playPanel") {
-        openPlayMenuPanel();
-        return;
-      }
-      showMenuPanel(buttonEl.dataset.menuTab);
-    });
-  });
+  bindMenuNavigation();
 
   saveSlotButtonEls.forEach((buttonEl, index) => {
     buttonEl.addEventListener("click", () => {
@@ -13515,6 +14794,8 @@ function collectNearbyIncomeFromPads() {
   }
 
   let collectedDollars = 0;
+  let triggeredEshdogFighter = false;
+  const activeBaseIndex = getActivePlayerBaseIndex();
   const collectionRadiusFallback = PLAYER_COLLIDER_RADIUS + 0.52;
   for (const student of studentNpcs) {
     if (!student || student.purchaseState !== "generating" || !student.avatar || !student.avatar.userData) {
@@ -13536,6 +14817,15 @@ function collectNearbyIncomeFromPads() {
     if (!canCollectFromPad || (student.pendingMoney || 0) <= 0) {
       continue;
     }
+    if (
+      multiplayerConnected &&
+      Number.isInteger(student.assignedBaseIndex) &&
+      student.assignedBaseIndex >= 0 &&
+      student.assignedBaseIndex !== activeBaseIndex &&
+      isBaseProtectedByEshdog(student.assignedBaseIndex)
+    ) {
+      triggeredEshdogFighter = true;
+    }
     collectedDollars += student.pendingMoney;
     student.pendingMoney = 0;
     updateNpcInfoTag(student);
@@ -13547,6 +14837,10 @@ function collectNearbyIncomeFromPads() {
     renderSaveSlotsUi();
   }
 
+  if (triggeredEshdogFighter) {
+    triggerEshdogFighterSlow();
+  }
+
   return collectedDollars;
 }
 
@@ -13555,8 +14849,10 @@ function updateMovement(dt) {
   const speedMultiplier = Number.isFinite(shopEffects.speedMultiplier) ? shopEffects.speedMultiplier : 1;
   const jumpMultiplier = Number.isFinite(shopEffects.jumpMultiplier) ? shopEffects.jumpMultiplier : 1;
   const gravityMultiplier = Number.isFinite(shopEffects.gravityMultiplier) ? shopEffects.gravityMultiplier : 1;
-  const moveSpeed = WALK_SPEED * PLAYER_SPEED_MULTIPLIER * speedMultiplier;
-  const accelScale = PLAYER_SPEED_MULTIPLIER * speedMultiplier;
+  eshdogFighterSlowTimer = Math.max(0, eshdogFighterSlowTimer - Math.max(0, Number(dt) || 0));
+  const movementDebuffMultiplier = eshdogFighterSlowTimer > 0 ? ESHDOG_FIGHTER_SPEED_MULTIPLIER : 1;
+  const moveSpeed = WALK_SPEED * PLAYER_SPEED_MULTIPLIER * speedMultiplier * movementDebuffMultiplier;
+  const accelScale = PLAYER_SPEED_MULTIPLIER * speedMultiplier * movementDebuffMultiplier;
   const forwardInput = (keyState.w || mobileMoveInputState.w ? 1 : 0) + (keyState.s || mobileMoveInputState.s ? -1 : 0);
   const rightInput = (keyState.d || mobileMoveInputState.d ? 1 : 0) + (keyState.a || mobileMoveInputState.a ? -1 : 0);
   const hasInput = forwardInput !== 0 || rightInput !== 0;
@@ -13607,8 +14903,8 @@ function updateMovement(dt) {
     grounded = snapPlayerToGround(snapRange);
   }
 
-  if (player.position.y <= 0) {
-    player.position.y = 0;
+  if (player.position.y <= WORLD_GROUND_SURFACE_Y) {
+    player.position.y = WORLD_GROUND_SURFACE_Y;
     velocity.y = 0;
     grounded = true;
   }
@@ -13786,8 +15082,16 @@ function updateRebirthUi() {
   const activeStage = rebirthStatus.stage;
   const moneyAmount = rebirthStatus.moneyAmount;
   const finalStage = REBIRTH_STAGE_CONFIG[REBIRTH_STAGE_CONFIG.length - 1] || null;
-  const npcAName = activeStage ? activeStage.requiredNpcAName : finalStage ? finalStage.requiredNpcAName : "";
-  const npcBName = activeStage ? activeStage.requiredNpcBName : finalStage ? finalStage.requiredNpcBName : "";
+  const npcAName = activeStage
+    ? rebirthStatus.npcAName
+    : finalStage
+      ? formatRebirthRequirementLabel(getRebirthRequirementEntries(finalStage, "A"))
+      : "";
+  const npcBName = activeStage
+    ? rebirthStatus.npcBName
+    : finalStage
+      ? formatRebirthRequirementLabel(getRebirthRequirementEntries(finalStage, "B"))
+      : "";
   const requiredMoney = activeStage ? activeStage.requiredMoney : finalStage ? finalStage.requiredMoney : 0;
   const hasFirstRequirement = activeStage ? rebirthStatus.hasFirstRequirement : false;
   const hasSecondRequirement = activeStage ? rebirthStatus.hasSecondRequirement : false;
@@ -13895,10 +15199,20 @@ function updateRebirthUi() {
       rebirthConfirmBtnEl.disabled = !rebirthStatus.canRebirth;
       rebirthConfirmBtnEl.classList.toggle("ready", rebirthStatus.canRebirth);
       rebirthConfirmBtnEl.textContent = "Rebirth";
+      const firstRequirementText = hasFirstRequirement
+        ? rebirthStatus.npcAEntries.length > 1
+          ? npcAName
+          : `${rebirthStatus.npcACountRequired} ${npcAName}`
+        : "";
+      const secondRequirementText = hasSecondRequirement
+        ? rebirthStatus.npcBEntries.length > 1
+          ? npcBName
+          : `${rebirthStatus.npcBCountRequired} ${npcBName}`
+        : "";
       const lockedRequirementText = hasFirstRequirement && hasSecondRequirement
-        ? `Need ${rebirthStatus.npcACountRequired} ${npcAName}, ${rebirthStatus.npcBCountRequired} ${npcBName}, and $${requiredMoney.toLocaleString("en-US")} to reach ${stageTitle}`
+        ? `Need ${firstRequirementText}, ${secondRequirementText}, and $${requiredMoney.toLocaleString("en-US")} to reach ${stageTitle}`
         : hasFirstRequirement
-          ? `Need ${rebirthStatus.npcACountRequired} ${npcAName} and $${requiredMoney.toLocaleString("en-US")} to reach ${stageTitle}`
+          ? `Need ${firstRequirementText} and $${requiredMoney.toLocaleString("en-US")} to reach ${stageTitle}`
           : `Need $${requiredMoney.toLocaleString("en-US")} to reach ${stageTitle}`;
       rebirthConfirmBtnEl.setAttribute(
         "aria-label",
@@ -13948,7 +15262,7 @@ function start() {
   syncGuaranteedSpawnTimersToRewardProfile();
   syncBaseSecondFloorAvailability(true);
   refreshIncomePadAvailabilityVisuals();
-  player.position.set(SPAWN_X, 0, SPAWN_Z);
+  player.position.set(SPAWN_X, STREET_PATH_SURFACE_Y, SPAWN_Z);
   velocity.set(0, 0, 0);
   jumpQueued = false;
   grounded = true;
@@ -14476,6 +15790,7 @@ function animate() {
 
   if (!blockedBySecondaryTab) {
     updateRemotePlayers();
+    updateFletcherSnitchAlert();
     updateMultiplayerPositionSync(rawDt);
   }
 
@@ -14515,15 +15830,7 @@ try {
     saveSaveSlotsToStorage();
   }
 
-  menuTabButtonEls.forEach((buttonEl) => {
-    buttonEl.addEventListener("click", () => {
-      if (buttonEl.dataset.menuTab === "playPanel") {
-        openPlayMenuPanel();
-        return;
-      }
-      showMenuPanel(buttonEl.dataset.menuTab);
-    });
-  });
+  bindMenuNavigation();
   saveSlotButtonEls.forEach((buttonEl, index) => {
     buttonEl.addEventListener("click", () => {
       setSelectedSaveSlot(index, true);

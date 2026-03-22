@@ -22,6 +22,7 @@ const RARITY_RARE = "Rare";
 const RARITY_EPIC = "Epic";
 const RARITY_LEGENDARY = "Legendary";
 const RARITY_MYTHIC = "Mythic";
+const RARITY_SECRET = "Secret";
 
 const VARIANT_NORMAL = "normal";
 const VARIANT_SHINY = "shiny";
@@ -30,12 +31,13 @@ const VARIANT_DIAMOND = "diamond";
 const VARIANT_RAINBOW = "rainbow";
 
 const CHARACTER_POOLS_BY_RARITY = Object.freeze({
-  [RARITY_COMMON]: ["Leo"],
+  [RARITY_COMMON]: ["Leo", "Eshdog Marley"],
   [RARITY_UNCOMMON]: ["Ziggy"],
   [RARITY_RARE]: ["Nate", "Hendrix"],
   [RARITY_EPIC]: ["Ledger", "Charlie"],
   [RARITY_LEGENDARY]: ["Oscar", "Beau"],
   [RARITY_MYTHIC]: ["Christian", "Vince"],
+  [RARITY_SECRET]: ["Fletcher", "Eshdog Marley"],
 });
 
 const VARIANT_DEFINITIONS = Object.freeze([
@@ -208,6 +210,9 @@ function serializePlayer(player) {
     socketId: player.socketId,
     username: player.username,
     rebirthCount: player.rebirthCount,
+    baseIndex: player.baseIndex,
+    hasFletcherOnBase: Boolean(player.hasFletcherOnBase),
+    hasEshdogMarleyOnBase: Boolean(player.hasEshdogMarleyOnBase),
     position: {
       x: player.position.x,
       y: player.position.y,
@@ -311,6 +316,9 @@ io.on("connection", (socket) => {
     socketId: socket.id,
     username: `Player ${socket.id.slice(0, 4)}`,
     rebirthCount: 0,
+    baseIndex: -1,
+    hasFletcherOnBase: false,
+    hasEshdogMarleyOnBase: false,
     position: { x: 0, y: 0, z: 0, rotationY: 0 },
     lastMovementBroadcastAt: 0,
   });
@@ -325,12 +333,18 @@ io.on("connection", (socket) => {
     }
     player.username = sanitizeUsername(payload.username);
     player.rebirthCount = Math.max(0, Math.floor(Number(payload.rebirthCount) || 0));
+    player.baseIndex = Number.isInteger(payload.baseIndex) ? payload.baseIndex : -1;
+    player.hasFletcherOnBase = Boolean(payload.hasFletcherOnBase);
+    player.hasEshdogMarleyOnBase = Boolean(payload.hasEshdogMarleyOnBase);
     player.position = sanitizePosition(payload.position);
     socket.broadcast.emit("player:joined", serializePlayer(player));
     socket.broadcast.emit("player:moved", {
       socketId: socket.id,
       username: player.username,
       rebirthCount: player.rebirthCount,
+      baseIndex: player.baseIndex,
+      hasFletcherOnBase: player.hasFletcherOnBase,
+      hasEshdogMarleyOnBase: player.hasEshdogMarleyOnBase,
       position: player.position,
     });
     emitPlayerList();
@@ -347,10 +361,20 @@ io.on("connection", (socket) => {
     }
     player.lastMovementBroadcastAt = nowMs;
     player.position = sanitizePosition(payload);
+    player.baseIndex = Number.isInteger(payload.baseIndex) ? payload.baseIndex : player.baseIndex;
+    player.hasFletcherOnBase =
+      typeof payload.hasFletcherOnBase !== "undefined" ? Boolean(payload.hasFletcherOnBase) : player.hasFletcherOnBase;
+    player.hasEshdogMarleyOnBase =
+      typeof payload.hasEshdogMarleyOnBase !== "undefined"
+        ? Boolean(payload.hasEshdogMarleyOnBase)
+        : player.hasEshdogMarleyOnBase;
     socket.broadcast.emit("player:moved", {
       socketId: socket.id,
       username: player.username,
       rebirthCount: player.rebirthCount,
+      baseIndex: player.baseIndex,
+      hasFletcherOnBase: player.hasFletcherOnBase,
+      hasEshdogMarleyOnBase: player.hasEshdogMarleyOnBase,
       position: player.position,
     });
   });

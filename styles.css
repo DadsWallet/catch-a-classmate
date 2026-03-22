@@ -792,15 +792,23 @@ body {
   grid-template-columns: minmax(160px, 240px) minmax(460px, 1fr) minmax(260px, 360px);
   gap: clamp(14px, 2vw, 26px);
   align-items: stretch;
+  isolation: isolate;
 }
 
 .menu-nav {
+  position: relative;
+  z-index: 4;
   display: grid;
   gap: 10px;
   align-content: center;
+  pointer-events: auto;
 }
 
 .menu-nav-btn {
+  position: relative;
+  z-index: 4;
+  pointer-events: auto;
+  touch-action: manipulation;
   min-height: 52px;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-md);
@@ -830,6 +838,8 @@ body {
 }
 
 .menu-main {
+  position: relative;
+  z-index: 1;
   height: min(68vh, 700px);
   max-height: calc(100vh - 230px);
   border-radius: var(--radius-xl);
@@ -1249,6 +1259,8 @@ body {
 }
 
 .menu-logo {
+  position: relative;
+  z-index: 1;
   display: grid;
   place-items: center;
   padding: 10px;
