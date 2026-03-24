@@ -7481,6 +7481,10 @@ function connectMultiplayer() {
   multiplayerSocket.on("streetCharacter:purchaseDenied", (payload = {}) => {
     handleNetworkStreetCharacterPurchaseDenied(payload);
   });
+
+  multiplayerSocket.on("chat:message", (payload = {}) => {
+    showChatMessage(payload.type || "pull", payload.text || "");
+  });
 }
 
 function sanitizeNameTag(value) {
@@ -16461,3 +16465,119 @@ if (menuScreenEl) {
 connectMultiplayer();
 startPrimaryTabLockHeartbeat();
 animate();
+
+// ─── CHAT FEED ────────────────────────────────────────────────────────────────
+const chatFeedEl = document.createElement("div");
+chatFeedEl.id = "chatFeed";
+Object.assign(chatFeedEl.style, {
+  position: "fixed",
+  bottom: "60px",
+  left: "12px",
+  width: "320px",
+  display: "flex",
+  flexDirection: "column",
+  gap: "4px",
+  pointerEvents: "none",
+  zIndex: "9999",
+});
+document.body.appendChild(chatFeedEl);
+
+function showChatMessage(type, text) {
+  const msg = document.createElement("div");
+  Object.assign(msg.style, {
+    background: "rgba(0,0,0,0.65)",
+    color: type === "admin" ? "#FFD700" : "#ffffff",
+    fontFamily: "sans-serif",
+    fontSize: "13px",
+    fontWeight: type === "admin" ? "600" : "400",
+    padding: "5px 10px",
+    borderRadius: "6px",
+    opacity: "1",
+    transition: "opacity 0.5s ease",
+    maxWidth: "100%",
+    wordBreak: "break-word",
+  });
+  msg.textContent = type === "admin" ? "📢 " + text : text;
+  chatFeedEl.appendChild(msg);
+  setTimeout(() => { msg.style.opacity = "0"; }, 4000);
+  setTimeout(() => { if (msg.parentNode) msg.parentNode.removeChild(msg); }, 4600);
+}
+
+// ─── ADMIN PANEL ──────────────────────────────────────────────────────────────
+const ADMIN_NAME = "Adonis";
+
+function isAdmin() {
+  const el = nametagInputEl || usernameRequiredInputEl;
+  const name = el ? el.value.trim() : "";
+  return name === ADMIN_NAME;
+}
+
+const adminBtnEl = document.createElement("button");
+adminBtnEl.textContent = "A";
+Object.assign(adminBtnEl.style, {
+  position: "fixed",
+  top: "12px",
+  left: "12px",
+  width: "32px",
+  height: "32px",
+  borderRadius: "50%",
+  background: "#FFD700",
+  color: "#000",
+  fontWeight: "bold",
+  fontSize: "14px",
+  border: "none",
+  cursor: "pointer",
+  zIndex: "9999",
+  display: "none",
+});
+document.body.appendChild(adminBtnEl);
+
+const adminPanelEl = document.createElement("div");
+adminPanelEl.id = "adminPanel";
+Object.assign(adminPanelEl.style, {
+  position: "fixed",
+  top: "50px",
+  left: "12px",
+  width: "280px",
+  background: "rgba(0,0,0,0.85)",
+  borderRadius: "10px",
+  padding: "12px",
+  display: "none",
+  flexDirection: "column",
+  gap: "8px",
+  zIndex: "9999",
+  fontFamily: "sans-serif",
+  color: "#fff",
+});
+adminPanelEl.innerHTML = `
+  <div style="font-size:14px;font-weight:700;color:#FFD700;margin-bottom:4px;">📢 Admin Panel</div>
+  <input id="adminMsgInput" type="text" placeholder="Send message to all players..." 
+    style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:6px;border:none;font-size:13px;background:#222;color:#fff;">
+  <button id="adminMsgSendBtn" style="padding:6px;border-radius:6px;border:none;background:#FFD700;color:#000;font-weight:700;cursor:pointer;font-size:13px;">
+    Send Message
+  </button>
+`;
+document.body.appendChild(adminPanelEl);
+
+adminBtnEl.addEventListener("click", () => {
+  adminPanelEl.style.display = adminPanelEl.style.display === "none" ? "flex" : "none";
+});
+
+document.getElementById("adminMsgSendBtn").addEventListener("click", () => {
+  const input = document.getElementById("adminMsgInput");
+  const text = input.value.trim();
+  if (!text || !multiplayerSocket) return;
+  multiplayerSocket.emit("admin:message", { text });
+  input.value = "";
+});
+
+document.getElementById("adminMsgInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    document.getElementById("adminMsgSendBtn").click();
+  }
+});
+
+// Show admin button only for admin user
+setInterval(() => {
+  adminBtnEl.style.display = isAdmin() ? "block" : "none";
+}, 1000);

@@ -5,6 +5,7 @@ const { Server } = require("socket.io");
 
 const PORT = Number(process.env.PORT) || 3000;
 const CLIENT_ORIGIN = (process.env.CORS_ORIGIN || process.env.CLIENT_ORIGIN || "*").trim() || "*";
+const ADMIN_USERNAME = "Adonis";
 
 const MOVE_BROADCAST_INTERVAL_MS = Math.floor(1000 / 15);
 const MAP_LAYOUT_SCALE = 0.85;
@@ -394,6 +395,30 @@ io.on("connection", (socket) => {
       characterId,
       buyerSocketId: socket.id,
       character: serializeStreetCharacter(character),
+    });
+
+    // Broadcast pull notification for non-normal variants
+    const buyer = players.get(socket.id);
+    const buyerName = buyer ? buyer.username : "Someone";
+    if (character.variantId && character.variantId !== VARIANT_NORMAL) {
+      const variantLabel = character.variantId.charAt(0).toUpperCase() + character.variantId.slice(1);
+      io.emit("chat:message", {
+        type: "pull",
+        text: `${buyerName} just pulled a ${variantLabel} ${character.name}!`,
+        timestamp: Date.now(),
+      });
+    }
+  });
+
+  socket.on("admin:message", (payload = {}) => {
+    const player = players.get(socket.id);
+    if (!player || player.username !== ADMIN_USERNAME) return;
+    const text = String(payload.text || "").trim().slice(0, 200);
+    if (!text) return;
+    io.emit("chat:message", {
+      type: "admin",
+      text,
+      timestamp: Date.now(),
     });
   });
 
