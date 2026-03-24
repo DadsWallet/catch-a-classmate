@@ -15509,10 +15509,17 @@ function updateMovement(dt) {
   const stairAssistTargetY = getSecondFloorStairAssistTargetY();
   const collisionFeetY = Number.isFinite(stairAssistTargetY) ? Math.max(previousFeetY, stairAssistTargetY) : previousFeetY;
 
-  player.position.x += velocity.x * dt;
-  resolveHorizontalCollisions(collisionFeetY);
-  player.position.z += velocity.z * dt;
-  resolveHorizontalCollisions(collisionFeetY);
+  // Sub-step horizontal movement so the player can never skip through thin walls in a single frame.
+  // Min wall thickness is ~0.46 units; we keep each sub-step below 0.3 units of travel.
+  const _hSpeed = Math.hypot(velocity.x, velocity.z);
+  const _numSteps = Math.max(1, Math.ceil(_hSpeed * dt / 0.3));
+  const _subDt = dt / _numSteps;
+  for (let _step = 0; _step < _numSteps; _step++) {
+    player.position.x += velocity.x * _subDt;
+    resolveHorizontalCollisions(collisionFeetY);
+    player.position.z += velocity.z * _subDt;
+    resolveHorizontalCollisions(collisionFeetY);
+  }
 
   grounded = resolveVerticalCollisions(previousFeetY, player.position.y + velocity.y * dt);
   if (!grounded && velocity.y <= 0) {
