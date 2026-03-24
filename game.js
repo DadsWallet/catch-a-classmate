@@ -2570,6 +2570,12 @@ function applySecondFloorStairWalkAssist() {
   if (velocity.y > 0.6 && player.position.y > targetY + 0.12) {
     return false;
   }
+  // Don't pull the player back down if vertical collision already lifted them onto
+  // the landing or deck surface above the ramp line — just mark as grounded.
+  if (player.position.y > targetY + 0.04) {
+    velocity.y = 0;
+    return true;
+  }
 
   player.position.y = targetY;
   velocity.y = 0;
