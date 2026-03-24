@@ -7,6 +7,8 @@ const PORT = Number(process.env.PORT) || 3000;
 const CLIENT_ORIGIN = (process.env.CORS_ORIGIN || process.env.CLIENT_ORIGIN || "*").trim() || "*";
 const ADMIN_USERNAME = "Adonis";
 
+const BANNED_USERNAMES = ["cool guy", "cool guy 1", "cool guy 2"];
+
 const MOVE_BROADCAST_INTERVAL_MS = Math.floor(1000 / 15);
 const MAP_LAYOUT_SCALE = 0.85;
 const MAP_HALF_LENGTH = 128 * MAP_LAYOUT_SCALE;
@@ -332,7 +334,13 @@ io.on("connection", (socket) => {
     if (!player) {
       return;
     }
-    player.username = sanitizeUsername(payload.username);
+    const username = sanitizeUsername(payload.username);
+    if (BANNED_USERNAMES.includes(username.toLowerCase())) {
+      socket.emit("banned");
+      socket.disconnect(true);
+      return;
+    }
+    player.username = username;
     player.rebirthCount = Math.max(0, Math.floor(Number(payload.rebirthCount) || 0));
     player.baseIndex = Number.isInteger(payload.baseIndex) ? payload.baseIndex : -1;
     player.hasFletcherOnBase = Boolean(payload.hasFletcherOnBase);

@@ -16471,12 +16471,12 @@ const chatFeedEl = document.createElement("div");
 chatFeedEl.id = "chatFeed";
 Object.assign(chatFeedEl.style, {
   position: "fixed",
-  bottom: "60px",
+  top: "12px",
   left: "12px",
-  width: "320px",
+  width: "600px",
   display: "flex",
   flexDirection: "column",
-  gap: "4px",
+  gap: "6px",
   pointerEvents: "none",
   zIndex: "9999",
 });
@@ -16488,10 +16488,10 @@ function showChatMessage(type, text) {
     background: "rgba(0,0,0,0.65)",
     color: type === "admin" ? "#FFD700" : "#ffffff",
     fontFamily: "sans-serif",
-    fontSize: "13px",
+    fontSize: "65px",
     fontWeight: type === "admin" ? "600" : "400",
-    padding: "5px 10px",
-    borderRadius: "6px",
+    padding: "10px 20px",
+    borderRadius: "10px",
     opacity: "1",
     transition: "opacity 0.5s ease",
     maxWidth: "100%",
@@ -16572,6 +16572,9 @@ function getAdminSocket() {
     const slot = getActiveSaveSlot();
     const username = slot ? (slot.username || slot.name || ADMIN_NAME) : ADMIN_NAME;
     adminSocket.emit("player:register", { username });
+  });
+  adminSocket.on("banned", () => {
+    document.body.innerHTML = '<div style="background:#000;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:80px;font-family:sans-serif;font-weight:700;">gb</span></div>';
   });
   adminSocket.on("chat:message", (payload = {}) => {
     showChatMessage(payload.type || "pull", payload.text || "");
