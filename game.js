@@ -16597,3 +16597,8 @@ document.getElementById("adminMsgInput").addEventListener("keydown", (e) => {
 setInterval(() => {
   adminBtnEl.style.display = isAdmin() ? "block" : "none";
 }, 1000);
+
+// Connect all clients to receive chat messages even when multiplayer is disabled
+if (!MULTIPLAYER_ENABLED && SOCKET_URL) {
+  getAdminSocket();
+}
