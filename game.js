@@ -2101,7 +2101,7 @@ function createNeighborhoodMap() {
       minX: Math.min(secondFloorStairWallX, secondFloorStairWallX + secondFloorStairSide * stairWidth) - 0.12,
       maxX: Math.max(secondFloorStairWallX, secondFloorStairWallX + secondFloorStairSide * stairWidth) + 0.12,
       frontZ: secondFloorOuterFrontZ + 0.04,
-      stairBackZ: secondFloorStairBackEdgeZ,
+      stairBackZ: secondFloorDoorCenterZ + secondFloorLandingDepth * 0.5,
       backZ: secondFloorOuterBackZ - 0.04,
       groundY: groundTopY,
       topY: secondFloorDeckTopY + tileThickness + 0.01,
