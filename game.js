@@ -16566,8 +16566,9 @@ adminBtnEl.addEventListener("click", () => {
 document.getElementById("adminMsgSendBtn").addEventListener("click", () => {
   const input = document.getElementById("adminMsgInput");
   const text = input.value.trim();
-  if (!text || !multiplayerSocket) return;
-  multiplayerSocket.emit("admin:message", { text });
+  if (!text) return;
+  const sock = multiplayerSocket || window.io(SOCKET_URL);
+  sock.emit("admin:message", { text });
   input.value = "";
 });
 
