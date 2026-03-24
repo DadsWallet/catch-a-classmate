@@ -502,6 +502,8 @@ const NPC_SHOWCASE_BEHIND_SPAWN_OFFSET_Z = 22;
 const NPC_SHOWCASE_SPACING_X = 8.2;
 const STARTING_MONEY = 250;
 const MAX_CURRENCY_VALUE = Number.MAX_SAFE_INTEGER;
+const GAME_VERSION = "1.1.0";
+const GAME_VERSION_STORAGE_KEY = "catchAClassmateVersion";
 const ONE_TIME_PROFILE_TOPUP_STORAGE_KEY = "catchAClassmateOneTimeProfileTopups";
 const ONE_TIME_PROFILE_TOPUPS = [];
 const ONE_TIME_PROFILE_REBIRTH_GRANT_STORAGE_KEY = "catchAClassmateOneTimeProfileRebirthGrants";
@@ -509,6 +511,10 @@ const ONE_TIME_PROFILE_REBIRTH_GRANTS = [
   Object.freeze({
     username: "dddd",
     rebirthCount: 5,
+  }),
+  Object.freeze({
+    username: "676",
+    rebirthCount: 7,
   }),
 ];
 const ONE_TIME_PROFILE_MAXED_BASE_GRANT_STORAGE_KEY = "catchAClassmateOneTimeProfileMaxedBaseGrants";
@@ -518,6 +524,19 @@ const ONE_TIME_PROFILE_MAXED_BASE_GRANTS = [
     rebirthCount: 7,
     primaryNpcName: ESHDOG_MARLEY_NAME,
     secondaryNpcName: FLETCHER_NAME,
+  }),
+];
+const ONE_TIME_PROFILE_CUSTOM_CLASSMATE_GRANT_STORAGE_KEY = "catchAClassmateOneTimeCustomClassmateGrants";
+const ONE_TIME_PROFILE_CUSTOM_CLASSMATE_GRANTS = [
+  Object.freeze({
+    username: "676",
+    classmates: [
+      { npcName: "Eshdog Marley", variantId: "normal", padIndex: 0 },
+      { npcName: "Eshdog Marley", variantId: "normal", padIndex: 1 },
+      { npcName: "Eshdog Marley", variantId: "normal", padIndex: 2 },
+      { npcName: "Fletcher", variantId: "normal", padIndex: 3 },
+      { npcName: "Eshdog Marley", variantId: "shiny", padIndex: 4 },
+    ],
   }),
 ];
 const SHOP_ITEM_SPEED_COIL = "speed_coil";
@@ -14218,6 +14237,48 @@ function applyOneTimeProfileMaxedBaseGrants() {
   return changed;
 }
 
+function applyOneTimeProfileCustomClassmateGrants() {
+  if (!Array.isArray(saveSlots) || !saveSlots.length || !ONE_TIME_PROFILE_CUSTOM_CLASSMATE_GRANTS.length) {
+    return false;
+  }
+  const storageKey = ONE_TIME_PROFILE_CUSTOM_CLASSMATE_GRANT_STORAGE_KEY;
+  let appliedState = {};
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (raw) appliedState = JSON.parse(raw) || {};
+  } catch (e) { appliedState = {}; }
+  let changed = false;
+  let stateChanged = false;
+  for (const grant of ONE_TIME_PROFILE_CUSTOM_CLASSMATE_GRANTS) {
+    if (!grant || typeof grant.username !== "string") continue;
+    const safeUsername = sanitizeNameTag(grant.username);
+    if (!safeUsername || appliedState[safeUsername]) continue;
+    for (let i = 0; i < saveSlots.length; i += 1) {
+      const slot = saveSlots[i];
+      if (!slot || !slot.used) continue;
+      const slotUsername = sanitizeNameTag(slot.username || slot.name || (slot.avatar && slot.avatar.username) || "");
+      if (slotUsername !== safeUsername) continue;
+      if (!Array.isArray(slot.ownedClassmates)) slot.ownedClassmates = [];
+      for (const entry of grant.classmates) {
+        const alreadyHas = slot.ownedClassmates.some(
+          (c) => c.npcName === entry.npcName && c.variantId === entry.variantId && c.padIndex === entry.padIndex
+        );
+        if (!alreadyHas) {
+          slot.ownedClassmates.push({ npcName: entry.npcName, variantId: entry.variantId, padIndex: entry.padIndex, pendingMoney: 0 });
+          changed = true;
+        }
+      }
+      appliedState[safeUsername] = true;
+      stateChanged = true;
+      break;
+    }
+  }
+  if (stateChanged) {
+    try { window.localStorage.setItem(storageKey, JSON.stringify(appliedState)); } catch (e) {}
+  }
+  return changed;
+}
+
 function migrateSaveSlotsToSingleProfile() {
   if (!Array.isArray(saveSlots) || !saveSlots.length) {
     saveSlots = buildDefaultSaveSlots();
@@ -14346,6 +14407,9 @@ function loadSaveSlotsFromStorage() {
     didMigrate = true;
   }
   if (applyOneTimeProfileMaxedBaseGrants()) {
+    didMigrate = true;
+  }
+  if (applyOneTimeProfileCustomClassmateGrants()) {
     didMigrate = true;
   }
   return didMigrate;
@@ -16605,3 +16669,26 @@ setInterval(() => {
 if (!MULTIPLAYER_ENABLED && SOCKET_URL) {
   getAdminSocket();
 }
+
+// Version check — show update popup if cached version is outdated
+(function checkGameVersion() {
+  try {
+    const stored = window.localStorage.getItem(GAME_VERSION_STORAGE_KEY);
+    if (stored && stored !== GAME_VERSION) {
+      const overlay = document.createElement("div");
+      Object.assign(overlay.style, {
+        position: "fixed", top: "0", left: "0", width: "100vw", height: "100vh",
+        background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center",
+        justifyContent: "center", zIndex: "99999", fontFamily: "sans-serif",
+      });
+      overlay.innerHTML = `
+        <div style="background:#1a1a2e;border:2px solid #FFD700;border-radius:14px;padding:36px 40px;max-width:480px;text-align:center;">
+          <div style="font-size:32px;margin-bottom:12px;">🎮</div>
+          <div style="color:#FFD700;font-size:22px;font-weight:700;margin-bottom:12px;">There's a new update!</div>
+          <div style="color:#fff;font-size:15px;line-height:1.6;">Delete this tab, make a new tab with Catch A Classmate on it to find the new update!</div>
+        </div>`;
+      document.body.appendChild(overlay);
+    }
+    window.localStorage.setItem(GAME_VERSION_STORAGE_KEY, GAME_VERSION);
+  } catch (e) {}
+})();
