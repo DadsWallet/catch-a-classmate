@@ -16563,12 +16563,22 @@ adminBtnEl.addEventListener("click", () => {
   adminPanelEl.style.display = adminPanelEl.style.display === "none" ? "flex" : "none";
 });
 
+let adminSocket = null;
+function getAdminSocket() {
+  if (multiplayerSocket) return multiplayerSocket;
+  if (adminSocket) return adminSocket;
+  adminSocket = window.io(SOCKET_URL);
+  adminSocket.on("chat:message", (payload = {}) => {
+    showChatMessage(payload.type || "pull", payload.text || "");
+  });
+  return adminSocket;
+}
+
 document.getElementById("adminMsgSendBtn").addEventListener("click", () => {
   const input = document.getElementById("adminMsgInput");
   const text = input.value.trim();
   if (!text) return;
-  const sock = multiplayerSocket || window.io(SOCKET_URL);
-  sock.emit("admin:message", { text });
+  getAdminSocket().emit("admin:message", { text });
   input.value = "";
 });
 
