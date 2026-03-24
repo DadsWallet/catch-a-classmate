@@ -16568,6 +16568,11 @@ function getAdminSocket() {
   if (multiplayerSocket) return multiplayerSocket;
   if (adminSocket) return adminSocket;
   adminSocket = window.io(SOCKET_URL);
+  adminSocket.on("connect", () => {
+    const slot = getActiveSaveSlot();
+    const username = slot ? (slot.username || slot.name || ADMIN_NAME) : ADMIN_NAME;
+    adminSocket.emit("player:register", { username });
+  });
   adminSocket.on("chat:message", (payload = {}) => {
     showChatMessage(payload.type || "pull", payload.text || "");
   });
