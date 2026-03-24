@@ -1894,7 +1894,10 @@ function createNeighborhoodMap() {
       );
       sideEndFillSupport.castShadow = true;
       sideEndFillSupport.receiveShadow = true;
-      registerSecondFloorColliderMesh(sideEndFillSupport);
+      // Intentionally NOT registered as a world collider — this is purely visual fill.
+      // Registering it blocks the player at the final stair step because the full-height
+      // box sits right at stairBackZ and the player's feet haven't reached deck height yet.
+      sideEndFillSupport.userData.excludeWorldCollider = true;
       secondFloorGroup.add(sideEndFillSupport);
 
       const sideEndFill = new THREE.Mesh(
