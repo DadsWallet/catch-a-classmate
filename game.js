@@ -320,27 +320,6 @@ const NPC_BASE_ECONOMY_BY_NAME = Object.freeze({
   [CHRISTIAN_NAME]: Object.freeze({ cost: 1520000, moneyPerSecond: 1900 }),
   [VINCE_NAME]: Object.freeze({ cost: 1720000, moneyPerSecond: 2150 }),
 });
-const ADMIN_GRANTABLE_CHARACTER_NAMES = Object.freeze([
-  LEO_NAME,
-  ZIGGY_NAME,
-  NATE_NAME,
-  HENDRIX_NAME,
-  CHARLIE_NAME,
-  LEDGER_NAME,
-  OSCAR_NAME,
-  BEAU_NAME,
-  CHRISTIAN_NAME,
-  VINCE_NAME,
-  FLETCHER_NAME,
-  ESHDOG_MARLEY_NAME,
-]);
-const ADMIN_GRANTABLE_VARIANT_IDS = Object.freeze([
-  VARIANT_NORMAL,
-  VARIANT_SHINY,
-  VARIANT_GOLDEN,
-  VARIANT_DIAMOND,
-  VARIANT_RAINBOW,
-]);
 const RARITY_ECONOMY_BY_TIER = Object.freeze({
   [RARITY_COMMON]: Object.freeze({ cost: 25, moneyPerSecond: 1 }),
   [RARITY_UNCOMMON]: Object.freeze({ cost: 100, moneyPerSecond: 3 }),
@@ -549,10 +528,6 @@ const ONE_TIME_PROFILE_MAXED_BASE_GRANTS = [
 ];
 const ONE_TIME_PROFILE_CUSTOM_CLASSMATE_GRANT_STORAGE_KEY = "catchAClassmateOneTimeCustomClassmateGrants";
 const ONE_TIME_PROFILE_CUSTOM_CLASSMATE_GRANTS = [
-  Object.freeze({
-    username: "leo lad",
-    classmates: [{ npcName: FLETCHER_NAME, variantId: VARIANT_NORMAL, padIndex: 0 }],
-  }),
   Object.freeze({
     username: "676",
     classmates: [
@@ -812,7 +787,7 @@ const SOCKET_URL = (() => {
   }
   return "";
 })();
-const BUILD_ID = "20260326-482";
+const BUILD_ID = "20260323-467";
 
 const clock = new THREE.Clock();
 const velocity = new THREE.Vector3();
@@ -7335,94 +7310,6 @@ function finalizeStreetNpcPurchase(student) {
   return true;
 }
 
-function spawnAdminBroadcastStreetNpc(npcName, variantId) {
-  const safeNpcName = typeof npcName === "string" ? npcName.trim() : "";
-  if (!safeNpcName || !ADMIN_GRANTABLE_CHARACTER_NAMES.includes(safeNpcName)) {
-    return false;
-  }
-  const safeVariantId = normalizeNpcVariantId(variantId);
-  const npc = createNpcForName(safeNpcName, { variantId: safeVariantId });
-  if (!npc || !npc.avatar || !npc.avatar.userData) {
-    return false;
-  }
-
-  let adminStreetSpawnOffset = 0;
-  for (let i = 0; i < studentNpcs.length; i += 1) {
-    const existingNpc = studentNpcs[i];
-    if (!existingNpc || !existingNpc.avatar || !existingNpc.avatar.userData) {
-      continue;
-    }
-    if (existingNpc.purchaseState !== "forSale" || !existingNpc.avatar.userData.isStreetWalker) {
-      continue;
-    }
-    adminStreetSpawnOffset += 1;
-  }
-
-  npc.direction = 1;
-  npc.purchaseState = "forSale";
-  npc.assignedBaseIndex = -1;
-  npc.assignedPadIndex = -1;
-  if (npc.assignedPadWorld && npc.assignedPadWorld.set) {
-    npc.assignedPadWorld.set(0, 0, 0);
-  }
-  if (npc.assignedPadStandWorld && npc.assignedPadStandWorld.set) {
-    npc.assignedPadStandWorld.set(0, 0, 0);
-  }
-  if (npc.assignedPadWalkWorld && npc.assignedPadWalkWorld.set) {
-    npc.assignedPadWalkWorld.set(0, 0, 0);
-  }
-  npc.assignedPadFacingYaw = Math.PI;
-  npc.incomeAccumulator = 0;
-  npc.incomePayoutCarry = 0;
-  npc.pendingMoney = 0;
-  npc.speed = LEO_PATROL_SPEED;
-  npc.minZ = NPC_STREAM_START_Z;
-  npc.maxZ = NPC_STREAM_END_Z;
-  clearNetworkStreetMetadata(npc);
-  npc.avatar.userData.streamSpawnRarity = getNpcRarityForName(safeNpcName);
-  npc.avatar.userData.isGuaranteedSpawn = false;
-  npc.avatar.userData.isStreetWalker = true;
-  npc.avatar.userData.isPurchasedNpc = false;
-  npc.avatar.userData.purchaseState = "forSale";
-  npc.avatar.position.x = NPC_STREAM_LANE_X + (((adminStreetSpawnOffset % 3) - 1) * 2.4);
-  npc.avatar.position.y = STREET_PATH_SURFACE_Y;
-  npc.avatar.position.z = Math.min(
-    NPC_STREAM_END_Z - 8,
-    Math.max(NPC_STREAM_START_Z + 26, SPAWN_Z + 18) + Math.min(adminStreetSpawnOffset, 4) * 5
-  );
-  updateNpcInfoTag(npc);
-  studentNpcs.push(npc);
-  scene.add(npc.avatar);
-
-  const variant = getNpcVariantDefinition(safeVariantId);
-  const spawnedLabel = safeVariantId === VARIANT_NORMAL ? safeNpcName : `${variant.label} ${safeNpcName}`;
-  showTemporaryInteractionPrompt(`${spawnedLabel} spawned on the street!`, "default", 2.2);
-  return true;
-}
-
-function handleAdminClassmateGrant(payload = {}) {
-  const safePayload = payload && typeof payload === "object" ? payload : {};
-  const npcName = typeof safePayload.npcName === "string" ? safePayload.npcName.trim() : "";
-  if (!npcName) {
-    return;
-  }
-  const variantId = normalizeNpcVariantId(safePayload.variantId);
-  spawnAdminBroadcastStreetNpc(npcName, variantId);
-}
-
-function handleAdminChatAction(payload = {}) {
-  const action = payload && payload.adminAction && typeof payload.adminAction === "object" ? payload.adminAction : null;
-  if (!action || action.type !== "spawnClassmate") {
-    return;
-  }
-  const eventId = typeof action.eventId === "string" ? action.eventId : "";
-  if (hasProcessedAdminGrantEventId(eventId)) {
-    return;
-  }
-  rememberAdminGrantEventId(eventId);
-  handleAdminClassmateGrant(action);
-}
-
 function handleNetworkStreetCharacterPurchased(payload) {
   const safePayload = payload && typeof payload === "object" ? payload : {};
   const characterId = typeof safePayload.characterId === "string" ? safePayload.characterId : "";
@@ -7459,11 +7346,14 @@ function handleNetworkStreetCharacterPurchaseDenied(payload) {
   }
 }
 
-function buildSocketProfileRegistrationPayload() {
+function syncMultiplayerProfile() {
+  if (!multiplayerSocket || !multiplayerConnected) {
+    return;
+  }
   const activeSlot = getActiveSaveSlot();
   const avatarConfig = getCurrentAvatarConfig();
   const basePassives = getActiveBasePassiveFlags();
-  return {
+  multiplayerSocket.emit("player:register", {
     username: activeSlot ? activeSlot.username || activeSlot.name || avatarConfig.username : avatarConfig.username,
     rebirthCount: activeSlot ? getSlotRebirthCount(activeSlot) : 0,
     baseIndex: basePassives.baseIndex,
@@ -7475,78 +7365,7 @@ function buildSocketProfileRegistrationPayload() {
       z: player.position.z,
       rotationY: player.rotation.y,
     },
-  };
-}
-
-function emitProfileRegistrationToSocket(socket) {
-  if (!socket) {
-    return;
-  }
-  socket.emit("player:register", buildSocketProfileRegistrationPayload());
-}
-
-const processedAdminGrantEventIds = [];
-const pendingAdminGrantFallbackTimers = new Map();
-
-function rememberAdminGrantEventId(eventId) {
-  const safeEventId = typeof eventId === "string" ? eventId.trim() : "";
-  if (!safeEventId || processedAdminGrantEventIds.includes(safeEventId)) {
-    return;
-  }
-  if (pendingAdminGrantFallbackTimers.has(safeEventId)) {
-    clearTimeout(pendingAdminGrantFallbackTimers.get(safeEventId));
-    pendingAdminGrantFallbackTimers.delete(safeEventId);
-  }
-  processedAdminGrantEventIds.push(safeEventId);
-  if (processedAdminGrantEventIds.length > 80) {
-    processedAdminGrantEventIds.splice(0, processedAdminGrantEventIds.length - 80);
-  }
-}
-
-function hasProcessedAdminGrantEventId(eventId) {
-  const safeEventId = typeof eventId === "string" ? eventId.trim() : "";
-  return Boolean(safeEventId) && processedAdminGrantEventIds.includes(safeEventId);
-}
-
-function scheduleAdminGrantFallback(eventId, npcName, variantId) {
-  const safeEventId = typeof eventId === "string" ? eventId.trim() : "";
-  if (!safeEventId) {
-    return;
-  }
-  if (pendingAdminGrantFallbackTimers.has(safeEventId)) {
-    clearTimeout(pendingAdminGrantFallbackTimers.get(safeEventId));
-  }
-  const timeoutId = window.setTimeout(() => {
-    pendingAdminGrantFallbackTimers.delete(safeEventId);
-    if (hasProcessedAdminGrantEventId(safeEventId)) {
-      return;
-    }
-    rememberAdminGrantEventId(safeEventId);
-    spawnAdminBroadcastStreetNpc(npcName, variantId);
-  }, 1200);
-  pendingAdminGrantFallbackTimers.set(safeEventId, timeoutId);
-}
-
-function attachAdminBroadcastSocketListeners(socket) {
-  if (!socket || socket.__adminBroadcastListenersAttached) {
-    return;
-  }
-  socket.__adminBroadcastListenersAttached = true;
-  socket.on("admin:grantClassmate", (payload = {}) => {
-    const eventId = payload && typeof payload.eventId === "string" ? payload.eventId : "";
-    if (hasProcessedAdminGrantEventId(eventId)) {
-      return;
-    }
-    rememberAdminGrantEventId(eventId);
-    handleAdminClassmateGrant(payload);
   });
-}
-
-function syncMultiplayerProfile() {
-  if (!multiplayerSocket || !multiplayerConnected) {
-    return;
-  }
-  emitProfileRegistrationToSocket(multiplayerSocket);
 }
 
 function updateMultiplayerPositionSync(dt) {
@@ -7585,7 +7404,6 @@ function connectMultiplayer() {
   multiplayerSocket = window.io(SOCKET_URL, {
     transports: ["websocket", "polling"],
   });
-  attachAdminBroadcastSocketListeners(multiplayerSocket);
 
   multiplayerSocket.on("connect", () => {
     multiplayerConnected = true;
@@ -7697,7 +7515,6 @@ function connectMultiplayer() {
   });
 
   multiplayerSocket.on("chat:message", (payload = {}) => {
-    handleAdminChatAction(payload);
     showChatMessage(payload.type || "pull", payload.text || "");
   });
 }
@@ -12512,15 +12329,14 @@ function resetOwnedClassmatesForBase(baseIndex) {
   if (!Number.isInteger(baseIndex) || baseIndex < 0) {
     return;
   }
-  for (let i = studentNpcs.length - 1; i >= 0; i -= 1) {
-    const student = studentNpcs[i];
+  for (const student of studentNpcs) {
     if (!student || student.purchaseState === "forSale") {
       continue;
     }
     if (student.assignedBaseIndex !== baseIndex) {
       continue;
     }
-    removeSoldNpcFromWorld(student);
+    moveSoldNpcToStreamStart(student);
   }
   rebuildIncomePadOccupancy();
 }
@@ -15135,15 +14951,11 @@ function syncUsernameRequirementOverlay() {
   updateUsernameFieldLockState();
 }
 
-function applyUsernameToPrimaryProfile(username, avatarOverride = null) {
+function applyUsernameToPrimaryProfile(username) {
   const safeUsername = sanitizeNameTag(username);
   const slot = saveSlots[PRIMARY_PROFILE_SLOT_INDEX] || createEmptySaveSlot(PRIMARY_PROFILE_SLOT_INDEX);
-  const avatarSource =
-    avatarOverride && typeof avatarOverride === "object"
-      ? avatarOverride
-      : slot.avatar || getDefaultAvatarConfig();
   const nextAvatar = normalizeAvatarConfig({
-    ...avatarSource,
+    ...(slot.avatar || getDefaultAvatarConfig()),
     username: safeUsername,
     nametag: safeUsername,
   });
@@ -15165,7 +14977,6 @@ function commitPrimaryUsername(rawUsername, source = "menu") {
   const safeUsername = sanitizeNameTag(rawUsername);
   const primarySlot = getPrimarySaveSlot();
   const currentUsername = primarySlot ? primarySlot.name || (primarySlot.avatar && (primarySlot.avatar.username || primarySlot.avatar.nametag)) : "";
-  const currentAvatar = getCurrentAvatarConfig();
 
   if (!isCustomUsername(safeUsername)) {
     const message = source === "overlay" ? "Please choose a username first." : "Change username first!";
@@ -15198,7 +15009,7 @@ function commitPrimaryUsername(rawUsername, source = "menu") {
   }
 
   hideJacobBlockOverlay();
-  applyUsernameToPrimaryProfile(safeUsername, currentAvatar);
+  applyUsernameToPrimaryProfile(safeUsername);
   if (nametagInputEl) {
     nametagInputEl.value = safeUsername;
   }
@@ -16779,24 +16590,10 @@ function showChatMessage(type, text) {
 // ─── ADMIN PANEL ──────────────────────────────────────────────────────────────
 const ADMIN_NAME = "Adonis";
 
-function isAdminUsername(value) {
-  return sanitizeNameTag(value).toLowerCase() === ADMIN_NAME.toLowerCase();
-}
-
 function isAdmin() {
-  const activeSlot = getActiveSaveSlot();
-  const slotUsername = activeSlot ? activeSlot.username || activeSlot.name || "" : "";
-  if (isAdminUsername(slotUsername)) {
-    return true;
-  }
-  const currentAvatar = getCurrentAvatarConfig();
-  if (isAdminUsername(currentAvatar && currentAvatar.username ? currentAvatar.username : "")) {
-    return true;
-  }
-  const inputValue =
-    (nametagInputEl && nametagInputEl.value) || (usernameRequiredInputEl && usernameRequiredInputEl.value) || ""
-  ;
-  return isAdminUsername(inputValue);
+  const el = nametagInputEl || usernameRequiredInputEl;
+  const name = el ? el.value.trim() : "";
+  return name === ADMIN_NAME;
 }
 
 const adminBtnEl = document.createElement("button");
@@ -16804,17 +16601,17 @@ adminBtnEl.textContent = "A";
 Object.assign(adminBtnEl.style, {
   position: "fixed",
   top: "12px",
-  right: "12px",
-  width: "40px",
-  height: "40px",
+  left: "12px",
+  width: "32px",
+  height: "32px",
   borderRadius: "50%",
   background: "#FFD700",
   color: "#000",
   fontWeight: "bold",
-  fontSize: "16px",
+  fontSize: "14px",
   border: "none",
   cursor: "pointer",
-  zIndex: "10001",
+  zIndex: "9999",
   display: "none",
 });
 document.body.appendChild(adminBtnEl);
@@ -16824,43 +16621,49 @@ adminPanelEl.id = "adminPanel";
 Object.assign(adminPanelEl.style, {
   position: "fixed",
   top: "50px",
-  right: "12px",
-  width: "320px",
+  left: "12px",
+  width: "280px",
   background: "rgba(0,0,0,0.85)",
   borderRadius: "10px",
   padding: "12px",
   display: "none",
   flexDirection: "column",
   gap: "8px",
-  zIndex: "10001",
+  zIndex: "9999",
   fontFamily: "sans-serif",
   color: "#fff",
 });
-const adminGrantCharacterOptionsHtml = ADMIN_GRANTABLE_CHARACTER_NAMES.map(
-  (npcName) => `<option value="${npcName}">${npcName}</option>`
-).join("");
-const adminGrantVariantOptionsHtml = ADMIN_GRANTABLE_VARIANT_IDS.map((variantId) => {
-  const variant = getNpcVariantDefinition(variantId);
-  return `<option value="${variantId}">${variant.label}</option>`;
-}).join("");
 adminPanelEl.innerHTML = `
-  <div style="font-size:14px;font-weight:700;color:#FFD700;margin-bottom:4px;">📢 Admin Panel</div>
-  <input id="adminMsgInput" type="text" placeholder="Send message to all players..." 
+  <div style="font-size:14px;font-weight:700;color:#FFD700;margin-bottom:4px;">\uD83D\uDCE2 Admin Panel</div>
+  <input id="adminMsgInput" type="text" placeholder="Send message to all players..."
     style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:6px;border:none;font-size:13px;background:#222;color:#fff;">
   <button id="adminMsgSendBtn" style="padding:6px;border-radius:6px;border:none;background:#FFD700;color:#000;font-weight:700;cursor:pointer;font-size:13px;">
     Send Message
   </button>
-  <div style="margin-top:6px;font-size:13px;font-weight:700;color:#8bdcff;">Spawn classmate for everyone</div>
-  <label for="adminGiftNpcSelect" style="font-size:12px;color:#d7d7d7;">Classmate</label>
-  <select id="adminGiftNpcSelect" style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:6px;border:none;font-size:13px;background:#222;color:#fff;">
-    ${adminGrantCharacterOptionsHtml}
+  <div style="font-size:12px;font-weight:700;color:#FFD700;margin-top:6px;">\u26A1 Force Spawn</div>
+  <select id="adminSpawnName" style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:6px;border:none;font-size:13px;background:#222;color:#fff;">
+    <option value="Leo">Leo</option>
+    <option value="Ziggy">Ziggy</option>
+    <option value="Nate">Nate</option>
+    <option value="Hendrix">Hendrix</option>
+    <option value="Ledger">Ledger</option>
+    <option value="Charlie">Charlie</option>
+    <option value="Oscar">Oscar</option>
+    <option value="Beau">Beau</option>
+    <option value="Christian">Christian</option>
+    <option value="Vince">Vince</option>
+    <option value="Fletcher">Fletcher</option>
+    <option value="Eshdog Marley">Eshdog Marley</option>
   </select>
-  <label for="adminGiftVariantSelect" style="font-size:12px;color:#d7d7d7;">Mutation</label>
-  <select id="adminGiftVariantSelect" style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:6px;border:none;font-size:13px;background:#222;color:#fff;">
-    ${adminGrantVariantOptionsHtml}
+  <select id="adminSpawnVariant" style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:6px;border:none;font-size:13px;background:#222;color:#fff;">
+    <option value="normal">Normal</option>
+    <option value="shiny">Shiny</option>
+    <option value="golden">Golden</option>
+    <option value="diamond">Diamond</option>
+    <option value="rainbow">Rainbow</option>
   </select>
-  <button id="adminGiftSendBtn" style="padding:6px;border-radius:6px;border:none;background:#8bdcff;color:#03131d;font-weight:700;cursor:pointer;font-size:13px;">
-    Spawn Classmate
+  <button id="adminSpawnBtn" style="padding:6px;border-radius:6px;border:none;background:#00cc66;color:#000;font-weight:700;cursor:pointer;font-size:13px;">
+    Spawn Character
   </button>
 `;
 document.body.appendChild(adminPanelEl);
@@ -16871,21 +16674,18 @@ adminBtnEl.addEventListener("click", () => {
 
 let adminSocket = null;
 function getAdminSocket() {
-  if (multiplayerSocket) {
-    attachAdminBroadcastSocketListeners(multiplayerSocket);
-    return multiplayerSocket;
-  }
+  if (multiplayerSocket) return multiplayerSocket;
   if (adminSocket) return adminSocket;
   adminSocket = window.io(SOCKET_URL);
-  attachAdminBroadcastSocketListeners(adminSocket);
   adminSocket.on("connect", () => {
-    emitProfileRegistrationToSocket(adminSocket);
+    const slot = getActiveSaveSlot();
+    const username = slot ? (slot.username || slot.name || ADMIN_NAME) : ADMIN_NAME;
+    adminSocket.emit("player:register", { username });
   });
   adminSocket.on("banned", () => {
     document.body.innerHTML = '<div style="background:#000;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:80px;font-family:sans-serif;font-weight:700;">gb</span></div>';
   });
   adminSocket.on("chat:message", (payload = {}) => {
-    handleAdminChatAction(payload);
     showChatMessage(payload.type || "pull", payload.text || "");
   });
   return adminSocket;
@@ -16895,9 +16695,7 @@ document.getElementById("adminMsgSendBtn").addEventListener("click", () => {
   const input = document.getElementById("adminMsgInput");
   const text = input.value.trim();
   if (!text) return;
-  const socket = getAdminSocket();
-  emitProfileRegistrationToSocket(socket);
-  socket.emit("admin:message", { text });
+  getAdminSocket().emit("admin:message", { text });
   input.value = "";
 });
 
@@ -16907,27 +16705,17 @@ document.getElementById("adminMsgInput").addEventListener("keydown", (e) => {
   }
 });
 
-document.getElementById("adminGiftSendBtn").addEventListener("click", () => {
-  const npcSelect = document.getElementById("adminGiftNpcSelect");
-  const variantSelect = document.getElementById("adminGiftVariantSelect");
-  const npcName = npcSelect ? String(npcSelect.value || "").trim() : "";
-  const variantId = variantSelect ? String(variantSelect.value || "").trim() : VARIANT_NORMAL;
-  if (!npcName) {
-    return;
-  }
-  const socket = getAdminSocket();
-  const eventId = `grant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  emitProfileRegistrationToSocket(socket);
-  const variant = getNpcVariantDefinition(variantId);
-  const sentLabel = variantId === VARIANT_NORMAL ? npcName : `${variant.label} ${npcName}`;
-  rememberAdminGrantEventId(eventId);
-  spawnAdminBroadcastStreetNpc(npcName, variantId);
-  socket.emit("admin:grantClassmate", {
-    eventId,
-    npcName,
-    variantId,
-  });
-  showTemporaryInteractionPrompt(`Sending ${sentLabel} to everyone...`, "default", 2);
+document.getElementById("adminSpawnBtn").addEventListener("click", () => {
+  const name = document.getElementById("adminSpawnName").value;
+  const variantId = document.getElementById("adminSpawnVariant").value;
+  if (!name) return;
+  const npc = createNpcForName(name, { variantId });
+  if (!npc) return;
+  if (!placeNpcOnStreetStream(npc, 0)) return;
+  npc.avatar.userData.streamSpawnRarity = getNpcRarityForName(name);
+  npc.avatar.userData.isGuaranteedSpawn = false;
+  studentNpcs.push(npc);
+  scene.add(npc.avatar);
 });
 
 // Show admin button only for admin user
