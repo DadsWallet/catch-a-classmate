@@ -787,7 +787,7 @@ const SOCKET_URL = (() => {
   }
   return "";
 })();
-const BUILD_ID = "20260323-467";
+const BUILD_ID = "20260326-469";
 
 const clock = new THREE.Clock();
 const velocity = new THREE.Vector3();
@@ -2567,7 +2567,11 @@ function applySecondFloorStairWalkAssist() {
   if (!Number.isFinite(targetY)) {
     return false;
   }
-  if (velocity.y > 0.6 && player.position.y > targetY + 0.12) {
+  // If the player has any meaningful upward velocity (i.e. they jumped), don't
+  // interfere — let normal gravity/collision handle it. Without this the assist
+  // snaps them back to the ramp surface every frame and marks them grounded,
+  // letting them jump infinitely.
+  if (velocity.y > 0.25) {
     return false;
   }
   // Don't pull the player back down if vertical collision already lifted them onto
@@ -12325,14 +12329,15 @@ function resetOwnedClassmatesForBase(baseIndex) {
   if (!Number.isInteger(baseIndex) || baseIndex < 0) {
     return;
   }
-  for (const student of studentNpcs) {
+  for (let i = studentNpcs.length - 1; i >= 0; i -= 1) {
+    const student = studentNpcs[i];
     if (!student || student.purchaseState === "forSale") {
       continue;
     }
     if (student.assignedBaseIndex !== baseIndex) {
       continue;
     }
-    moveSoldNpcToStreamStart(student);
+    removeSoldNpcFromWorld(student);
   }
   rebuildIncomePadOccupancy();
 }
@@ -14947,11 +14952,15 @@ function syncUsernameRequirementOverlay() {
   updateUsernameFieldLockState();
 }
 
-function applyUsernameToPrimaryProfile(username) {
+function applyUsernameToPrimaryProfile(username, avatarOverride = null) {
   const safeUsername = sanitizeNameTag(username);
   const slot = saveSlots[PRIMARY_PROFILE_SLOT_INDEX] || createEmptySaveSlot(PRIMARY_PROFILE_SLOT_INDEX);
+  const avatarSource =
+    avatarOverride && typeof avatarOverride === "object"
+      ? avatarOverride
+      : slot.avatar || getDefaultAvatarConfig();
   const nextAvatar = normalizeAvatarConfig({
-    ...(slot.avatar || getDefaultAvatarConfig()),
+    ...avatarSource,
     username: safeUsername,
     nametag: safeUsername,
   });
@@ -14973,6 +14982,7 @@ function commitPrimaryUsername(rawUsername, source = "menu") {
   const safeUsername = sanitizeNameTag(rawUsername);
   const primarySlot = getPrimarySaveSlot();
   const currentUsername = primarySlot ? primarySlot.name || (primarySlot.avatar && (primarySlot.avatar.username || primarySlot.avatar.nametag)) : "";
+  const currentAvatar = getCurrentAvatarConfig();
 
   if (!isCustomUsername(safeUsername)) {
     const message = source === "overlay" ? "Please choose a username first." : "Change username first!";
@@ -15005,7 +15015,7 @@ function commitPrimaryUsername(rawUsername, source = "menu") {
   }
 
   hideJacobBlockOverlay();
-  applyUsernameToPrimaryProfile(safeUsername);
+  applyUsernameToPrimaryProfile(safeUsername, currentAvatar);
   if (nametagInputEl) {
     nametagInputEl.value = safeUsername;
   }
