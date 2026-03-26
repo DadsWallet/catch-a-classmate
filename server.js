@@ -445,9 +445,27 @@ io.on("connection", (socket) => {
     if (!player || player.username !== ADMIN_USERNAME) return;
     const text = String(payload.text || "").trim().slice(0, 200);
     if (!text) return;
+    let adminAction = null;
+    const requestedAction = payload && payload.adminAction && typeof payload.adminAction === "object" ? payload.adminAction : null;
+    if (requestedAction && requestedAction.type === "spawnClassmate") {
+      const npcName = sanitizeGrantableCharacterName(requestedAction.npcName);
+      if (npcName) {
+        const variantId = sanitizeVariantId(requestedAction.variantId);
+        const eventId =
+          sanitizeAdminEventId(requestedAction.eventId) ||
+          `grant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        adminAction = {
+          type: "spawnClassmate",
+          eventId,
+          npcName,
+          variantId,
+        };
+      }
+    }
     io.emit("chat:message", {
       type: "admin",
       text,
+      adminAction,
       timestamp: Date.now(),
     });
   });

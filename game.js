@@ -812,7 +812,7 @@ const SOCKET_URL = (() => {
   }
   return "";
 })();
-const BUILD_ID = "20260326-477";
+const BUILD_ID = "20260326-480";
 
 const clock = new THREE.Clock();
 const velocity = new THREE.Vector3();
@@ -7486,11 +7486,16 @@ function emitProfileRegistrationToSocket(socket) {
 }
 
 const processedAdminGrantEventIds = [];
+const pendingAdminGrantFallbackTimers = new Map();
 
 function rememberAdminGrantEventId(eventId) {
   const safeEventId = typeof eventId === "string" ? eventId.trim() : "";
   if (!safeEventId || processedAdminGrantEventIds.includes(safeEventId)) {
     return;
+  }
+  if (pendingAdminGrantFallbackTimers.has(safeEventId)) {
+    clearTimeout(pendingAdminGrantFallbackTimers.get(safeEventId));
+    pendingAdminGrantFallbackTimers.delete(safeEventId);
   }
   processedAdminGrantEventIds.push(safeEventId);
   if (processedAdminGrantEventIds.length > 80) {
@@ -7501,6 +7506,25 @@ function rememberAdminGrantEventId(eventId) {
 function hasProcessedAdminGrantEventId(eventId) {
   const safeEventId = typeof eventId === "string" ? eventId.trim() : "";
   return Boolean(safeEventId) && processedAdminGrantEventIds.includes(safeEventId);
+}
+
+function scheduleAdminGrantFallback(eventId, npcName, variantId) {
+  const safeEventId = typeof eventId === "string" ? eventId.trim() : "";
+  if (!safeEventId) {
+    return;
+  }
+  if (pendingAdminGrantFallbackTimers.has(safeEventId)) {
+    clearTimeout(pendingAdminGrantFallbackTimers.get(safeEventId));
+  }
+  const timeoutId = window.setTimeout(() => {
+    pendingAdminGrantFallbackTimers.delete(safeEventId);
+    if (hasProcessedAdminGrantEventId(safeEventId)) {
+      return;
+    }
+    rememberAdminGrantEventId(safeEventId);
+    spawnAdminBroadcastStreetNpc(npcName, variantId);
+  }, 1200);
+  pendingAdminGrantFallbackTimers.set(safeEventId, timeoutId);
 }
 
 function attachAdminBroadcastSocketListeners(socket) {
@@ -16904,17 +16928,25 @@ document.getElementById("adminGiftSendBtn").addEventListener("click", () => {
   }
   const socket = getAdminSocket();
   const eventId = `grant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  rememberAdminGrantEventId(eventId);
-  spawnAdminBroadcastStreetNpc(npcName, variantId);
   emitProfileRegistrationToSocket(socket);
+  const variant = getNpcVariantDefinition(variantId);
+  const sentLabel = variantId === VARIANT_NORMAL ? npcName : `${variant.label} ${npcName}`;
+  socket.emit("admin:message", {
+    text: `${sentLabel} spawned on the street!`,
+    adminAction: {
+      type: "spawnClassmate",
+      eventId,
+      npcName,
+      variantId,
+    },
+  });
   socket.emit("admin:grantClassmate", {
     eventId,
     npcName,
     variantId,
   });
-  const variant = getNpcVariantDefinition(variantId);
-  const sentLabel = variantId === VARIANT_NORMAL ? npcName : `${variant.label} ${npcName}`;
-  showTemporaryInteractionPrompt(`Spawned ${sentLabel} for everyone.`, "default", 2);
+  scheduleAdminGrantFallback(eventId, npcName, variantId);
+  showTemporaryInteractionPrompt(`Sending ${sentLabel} to everyone...`, "default", 2);
 });
 
 // Show admin button only for admin user
