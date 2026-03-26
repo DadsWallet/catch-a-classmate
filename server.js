@@ -43,6 +43,10 @@ const CHARACTER_POOLS_BY_RARITY = Object.freeze({
   [RARITY_SECRET]: ["Fletcher", "Eshdog Marley"],
 });
 
+const ADMIN_GRANTABLE_CHARACTER_NAMES = Object.freeze(
+  Array.from(new Set(Object.values(CHARACTER_POOLS_BY_RARITY).flat()))
+);
+
 const VARIANT_DEFINITIONS = Object.freeze([
   Object.freeze({ id: VARIANT_NORMAL, chance: 80 }),
   Object.freeze({ id: VARIANT_SHINY, chance: 12 }),
@@ -50,6 +54,8 @@ const VARIANT_DEFINITIONS = Object.freeze([
   Object.freeze({ id: VARIANT_DIAMOND, chance: 2 }),
   Object.freeze({ id: VARIANT_RAINBOW, chance: 1 }),
 ]);
+
+const ADMIN_GRANTABLE_VARIANT_IDS = Object.freeze(VARIANT_DEFINITIONS.map((variant) => variant.id));
 
 const SPAWN_SCHEDULES = Object.freeze({
   common: Object.freeze({
@@ -140,6 +146,16 @@ function sanitizePosition(rawPosition) {
     z: Number.isFinite(z) ? z : 0,
     rotationY: Number.isFinite(rotationY) ? rotationY : 0,
   };
+}
+
+function sanitizeGrantableCharacterName(value) {
+  const safeName = String(value || "").trim();
+  return ADMIN_GRANTABLE_CHARACTER_NAMES.includes(safeName) ? safeName : "";
+}
+
+function sanitizeVariantId(value) {
+  const safeVariantId = String(value || "").trim().toLowerCase();
+  return ADMIN_GRANTABLE_VARIANT_IDS.includes(safeVariantId) ? safeVariantId : VARIANT_NORMAL;
 }
 
 function getRainbowWeightMultiplier() {
@@ -426,6 +442,24 @@ io.on("connection", (socket) => {
     io.emit("chat:message", {
       type: "admin",
       text,
+      timestamp: Date.now(),
+    });
+  });
+
+  socket.on("admin:grantClassmate", (payload = {}) => {
+    const player = players.get(socket.id);
+    if (!player || player.username !== ADMIN_USERNAME) {
+      return;
+    }
+    const npcName = sanitizeGrantableCharacterName(payload.npcName);
+    if (!npcName) {
+      return;
+    }
+    const variantId = sanitizeVariantId(payload.variantId);
+    io.emit("admin:grantClassmate", {
+      npcName,
+      variantId,
+      grantedBy: player.username,
       timestamp: Date.now(),
     });
   });

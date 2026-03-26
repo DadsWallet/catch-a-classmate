@@ -320,6 +320,27 @@ const NPC_BASE_ECONOMY_BY_NAME = Object.freeze({
   [CHRISTIAN_NAME]: Object.freeze({ cost: 1520000, moneyPerSecond: 1900 }),
   [VINCE_NAME]: Object.freeze({ cost: 1720000, moneyPerSecond: 2150 }),
 });
+const ADMIN_GRANTABLE_CHARACTER_NAMES = Object.freeze([
+  LEO_NAME,
+  ZIGGY_NAME,
+  NATE_NAME,
+  HENDRIX_NAME,
+  CHARLIE_NAME,
+  LEDGER_NAME,
+  OSCAR_NAME,
+  BEAU_NAME,
+  CHRISTIAN_NAME,
+  VINCE_NAME,
+  FLETCHER_NAME,
+  ESHDOG_MARLEY_NAME,
+]);
+const ADMIN_GRANTABLE_VARIANT_IDS = Object.freeze([
+  VARIANT_NORMAL,
+  VARIANT_SHINY,
+  VARIANT_GOLDEN,
+  VARIANT_DIAMOND,
+  VARIANT_RAINBOW,
+]);
 const RARITY_ECONOMY_BY_TIER = Object.freeze({
   [RARITY_COMMON]: Object.freeze({ cost: 25, moneyPerSecond: 1 }),
   [RARITY_UNCOMMON]: Object.freeze({ cost: 100, moneyPerSecond: 3 }),
@@ -528,6 +549,10 @@ const ONE_TIME_PROFILE_MAXED_BASE_GRANTS = [
 ];
 const ONE_TIME_PROFILE_CUSTOM_CLASSMATE_GRANT_STORAGE_KEY = "catchAClassmateOneTimeCustomClassmateGrants";
 const ONE_TIME_PROFILE_CUSTOM_CLASSMATE_GRANTS = [
+  Object.freeze({
+    username: "leo lad",
+    classmates: [{ npcName: FLETCHER_NAME, variantId: VARIANT_NORMAL, padIndex: 0 }],
+  }),
   Object.freeze({
     username: "676",
     classmates: [
@@ -787,7 +812,7 @@ const SOCKET_URL = (() => {
   }
   return "";
 })();
-const BUILD_ID = "20260326-469";
+const BUILD_ID = "20260326-473";
 
 const clock = new THREE.Clock();
 const velocity = new THREE.Vector3();
@@ -7310,6 +7335,43 @@ function finalizeStreetNpcPurchase(student) {
   return true;
 }
 
+function spawnAdminBroadcastStreetNpc(npcName, variantId) {
+  const safeNpcName = typeof npcName === "string" ? npcName.trim() : "";
+  if (!safeNpcName || !ADMIN_GRANTABLE_CHARACTER_NAMES.includes(safeNpcName)) {
+    return false;
+  }
+  const safeVariantId = normalizeNpcVariantId(variantId);
+  const npc = createNpcForName(safeNpcName, { variantId: safeVariantId });
+  if (!npc || !npc.avatar || !npc.avatar.userData) {
+    return false;
+  }
+
+  if (!placeNpcOnStreetStream(npc, 0)) {
+    return false;
+  }
+  clearNetworkStreetMetadata(npc);
+  npc.avatar.userData.streamSpawnRarity = getNpcRarityForName(safeNpcName);
+  npc.avatar.userData.isGuaranteedSpawn = false;
+  updateNpcInfoTag(npc);
+  studentNpcs.push(npc);
+  scene.add(npc.avatar);
+
+  const variant = getNpcVariantDefinition(safeVariantId);
+  const spawnedLabel = safeVariantId === VARIANT_NORMAL ? safeNpcName : `${variant.label} ${safeNpcName}`;
+  showTemporaryInteractionPrompt(`${spawnedLabel} spawned on the street!`, "default", 2.2);
+  return true;
+}
+
+function handleAdminClassmateGrant(payload = {}) {
+  const safePayload = payload && typeof payload === "object" ? payload : {};
+  const npcName = typeof safePayload.npcName === "string" ? safePayload.npcName.trim() : "";
+  if (!npcName) {
+    return;
+  }
+  const variantId = normalizeNpcVariantId(safePayload.variantId);
+  spawnAdminBroadcastStreetNpc(npcName, variantId);
+}
+
 function handleNetworkStreetCharacterPurchased(payload) {
   const safePayload = payload && typeof payload === "object" ? payload : {};
   const characterId = typeof safePayload.characterId === "string" ? safePayload.characterId : "";
@@ -7346,14 +7408,11 @@ function handleNetworkStreetCharacterPurchaseDenied(payload) {
   }
 }
 
-function syncMultiplayerProfile() {
-  if (!multiplayerSocket || !multiplayerConnected) {
-    return;
-  }
+function buildSocketProfileRegistrationPayload() {
   const activeSlot = getActiveSaveSlot();
   const avatarConfig = getCurrentAvatarConfig();
   const basePassives = getActiveBasePassiveFlags();
-  multiplayerSocket.emit("player:register", {
+  return {
     username: activeSlot ? activeSlot.username || activeSlot.name || avatarConfig.username : avatarConfig.username,
     rebirthCount: activeSlot ? getSlotRebirthCount(activeSlot) : 0,
     baseIndex: basePassives.baseIndex,
@@ -7365,7 +7424,31 @@ function syncMultiplayerProfile() {
       z: player.position.z,
       rotationY: player.rotation.y,
     },
+  };
+}
+
+function emitProfileRegistrationToSocket(socket) {
+  if (!socket) {
+    return;
+  }
+  socket.emit("player:register", buildSocketProfileRegistrationPayload());
+}
+
+function attachAdminBroadcastSocketListeners(socket) {
+  if (!socket || socket.__adminBroadcastListenersAttached) {
+    return;
+  }
+  socket.__adminBroadcastListenersAttached = true;
+  socket.on("admin:grantClassmate", (payload = {}) => {
+    handleAdminClassmateGrant(payload);
   });
+}
+
+function syncMultiplayerProfile() {
+  if (!multiplayerSocket || !multiplayerConnected) {
+    return;
+  }
+  emitProfileRegistrationToSocket(multiplayerSocket);
 }
 
 function updateMultiplayerPositionSync(dt) {
@@ -7404,6 +7487,7 @@ function connectMultiplayer() {
   multiplayerSocket = window.io(SOCKET_URL, {
     transports: ["websocket", "polling"],
   });
+  attachAdminBroadcastSocketListeners(multiplayerSocket);
 
   multiplayerSocket.on("connect", () => {
     multiplayerConnected = true;
@@ -16596,10 +16680,35 @@ function showChatMessage(type, text) {
 // ─── ADMIN PANEL ──────────────────────────────────────────────────────────────
 const ADMIN_NAME = "Adonis";
 
+function isAdminUsername(value) {
+  return sanitizeNameTag(value).toLowerCase() === ADMIN_NAME.toLowerCase();
+}
+
 function isAdmin() {
-  const el = nametagInputEl || usernameRequiredInputEl;
-  const name = el ? el.value.trim() : "";
-  return name === ADMIN_NAME;
+  const activeSlot = getActiveSaveSlot();
+  const slotUsername = activeSlot ? activeSlot.username || activeSlot.name || "" : "";
+  if (isAdminUsername(slotUsername)) {
+    return true;
+  }
+  if (Array.isArray(saveSlots)) {
+    for (let i = 0; i < saveSlots.length; i += 1) {
+      const slot = saveSlots[i];
+      if (!slot || !slot.used) {
+        continue;
+      }
+      if (isAdminUsername(slot.username || slot.name || (slot.avatar && slot.avatar.username) || "")) {
+        return true;
+      }
+    }
+  }
+  const currentAvatar = getCurrentAvatarConfig();
+  if (isAdminUsername(currentAvatar && currentAvatar.username ? currentAvatar.username : "")) {
+    return true;
+  }
+  const inputValue =
+    (nametagInputEl && nametagInputEl.value) || (usernameRequiredInputEl && usernameRequiredInputEl.value) || ""
+  ;
+  return isAdminUsername(inputValue);
 }
 
 const adminBtnEl = document.createElement("button");
@@ -16607,17 +16716,17 @@ adminBtnEl.textContent = "A";
 Object.assign(adminBtnEl.style, {
   position: "fixed",
   top: "12px",
-  left: "12px",
-  width: "32px",
-  height: "32px",
+  right: "12px",
+  width: "40px",
+  height: "40px",
   borderRadius: "50%",
   background: "#FFD700",
   color: "#000",
   fontWeight: "bold",
-  fontSize: "14px",
+  fontSize: "16px",
   border: "none",
   cursor: "pointer",
-  zIndex: "9999",
+  zIndex: "10001",
   display: "none",
 });
 document.body.appendChild(adminBtnEl);
@@ -16627,24 +16736,43 @@ adminPanelEl.id = "adminPanel";
 Object.assign(adminPanelEl.style, {
   position: "fixed",
   top: "50px",
-  left: "12px",
-  width: "280px",
+  right: "12px",
+  width: "320px",
   background: "rgba(0,0,0,0.85)",
   borderRadius: "10px",
   padding: "12px",
   display: "none",
   flexDirection: "column",
   gap: "8px",
-  zIndex: "9999",
+  zIndex: "10001",
   fontFamily: "sans-serif",
   color: "#fff",
 });
+const adminGrantCharacterOptionsHtml = ADMIN_GRANTABLE_CHARACTER_NAMES.map(
+  (npcName) => `<option value="${npcName}">${npcName}</option>`
+).join("");
+const adminGrantVariantOptionsHtml = ADMIN_GRANTABLE_VARIANT_IDS.map((variantId) => {
+  const variant = getNpcVariantDefinition(variantId);
+  return `<option value="${variantId}">${variant.label}</option>`;
+}).join("");
 adminPanelEl.innerHTML = `
   <div style="font-size:14px;font-weight:700;color:#FFD700;margin-bottom:4px;">📢 Admin Panel</div>
   <input id="adminMsgInput" type="text" placeholder="Send message to all players..." 
     style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:6px;border:none;font-size:13px;background:#222;color:#fff;">
   <button id="adminMsgSendBtn" style="padding:6px;border-radius:6px;border:none;background:#FFD700;color:#000;font-weight:700;cursor:pointer;font-size:13px;">
     Send Message
+  </button>
+  <div style="margin-top:6px;font-size:13px;font-weight:700;color:#8bdcff;">Spawn classmate for everyone</div>
+  <label for="adminGiftNpcSelect" style="font-size:12px;color:#d7d7d7;">Classmate</label>
+  <select id="adminGiftNpcSelect" style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:6px;border:none;font-size:13px;background:#222;color:#fff;">
+    ${adminGrantCharacterOptionsHtml}
+  </select>
+  <label for="adminGiftVariantSelect" style="font-size:12px;color:#d7d7d7;">Mutation</label>
+  <select id="adminGiftVariantSelect" style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:6px;border:none;font-size:13px;background:#222;color:#fff;">
+    ${adminGrantVariantOptionsHtml}
+  </select>
+  <button id="adminGiftSendBtn" style="padding:6px;border-radius:6px;border:none;background:#8bdcff;color:#03131d;font-weight:700;cursor:pointer;font-size:13px;">
+    Spawn Classmate
   </button>
 `;
 document.body.appendChild(adminPanelEl);
@@ -16655,13 +16783,15 @@ adminBtnEl.addEventListener("click", () => {
 
 let adminSocket = null;
 function getAdminSocket() {
-  if (multiplayerSocket) return multiplayerSocket;
+  if (multiplayerSocket) {
+    attachAdminBroadcastSocketListeners(multiplayerSocket);
+    return multiplayerSocket;
+  }
   if (adminSocket) return adminSocket;
   adminSocket = window.io(SOCKET_URL);
+  attachAdminBroadcastSocketListeners(adminSocket);
   adminSocket.on("connect", () => {
-    const slot = getActiveSaveSlot();
-    const username = slot ? (slot.username || slot.name || ADMIN_NAME) : ADMIN_NAME;
-    adminSocket.emit("player:register", { username });
+    emitProfileRegistrationToSocket(adminSocket);
   });
   adminSocket.on("banned", () => {
     document.body.innerHTML = '<div style="background:#000;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:80px;font-family:sans-serif;font-weight:700;">gb</span></div>';
@@ -16676,7 +16806,9 @@ document.getElementById("adminMsgSendBtn").addEventListener("click", () => {
   const input = document.getElementById("adminMsgInput");
   const text = input.value.trim();
   if (!text) return;
-  getAdminSocket().emit("admin:message", { text });
+  const socket = getAdminSocket();
+  emitProfileRegistrationToSocket(socket);
+  socket.emit("admin:message", { text });
   input.value = "";
 });
 
@@ -16684,6 +16816,25 @@ document.getElementById("adminMsgInput").addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     document.getElementById("adminMsgSendBtn").click();
   }
+});
+
+document.getElementById("adminGiftSendBtn").addEventListener("click", () => {
+  const npcSelect = document.getElementById("adminGiftNpcSelect");
+  const variantSelect = document.getElementById("adminGiftVariantSelect");
+  const npcName = npcSelect ? String(npcSelect.value || "").trim() : "";
+  const variantId = variantSelect ? String(variantSelect.value || "").trim() : VARIANT_NORMAL;
+  if (!npcName) {
+    return;
+  }
+  const socket = getAdminSocket();
+  emitProfileRegistrationToSocket(socket);
+  socket.emit("admin:grantClassmate", {
+    npcName,
+    variantId,
+  });
+  const variant = getNpcVariantDefinition(variantId);
+  const sentLabel = variantId === VARIANT_NORMAL ? npcName : `${variant.label} ${npcName}`;
+  showTemporaryInteractionPrompt(`Spawned ${sentLabel} for everyone.`, "default", 2);
 });
 
 // Show admin button only for admin user
