@@ -474,6 +474,12 @@ io.on("connection", (socket) => {
     io.emit("chat:message", {
       type: "admin",
       text: `${player.username} spawned ${variantLabel}${npcName} on the street!`,
+      adminAction: {
+        type: "spawnClassmate",
+        eventId,
+        npcName,
+        variantId,
+      },
       timestamp: Date.now(),
     });
   });

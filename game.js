@@ -812,7 +812,7 @@ const SOCKET_URL = (() => {
   }
   return "";
 })();
-const BUILD_ID = "20260326-475";
+const BUILD_ID = "20260326-477";
 
 const clock = new THREE.Clock();
 const velocity = new THREE.Vector3();
@@ -7346,17 +7346,50 @@ function spawnAdminBroadcastStreetNpc(npcName, variantId) {
     return false;
   }
 
-  if (!placeNpcOnStreetStream(npc, 0)) {
-    return false;
+  let adminStreetSpawnOffset = 0;
+  for (let i = 0; i < studentNpcs.length; i += 1) {
+    const existingNpc = studentNpcs[i];
+    if (!existingNpc || !existingNpc.avatar || !existingNpc.avatar.userData) {
+      continue;
+    }
+    if (existingNpc.purchaseState !== "forSale" || !existingNpc.avatar.userData.isStreetWalker) {
+      continue;
+    }
+    adminStreetSpawnOffset += 1;
   }
-  npc.avatar.position.z = Math.min(NPC_STREAM_END_Z - 1, npc.avatar.position.z + 22);
-  npc.minZ = npc.avatar.position.z - 1;
-  npc.maxZ = NPC_STREAM_END_Z;
+
   npc.direction = 1;
+  npc.purchaseState = "forSale";
+  npc.assignedBaseIndex = -1;
+  npc.assignedPadIndex = -1;
+  if (npc.assignedPadWorld && npc.assignedPadWorld.set) {
+    npc.assignedPadWorld.set(0, 0, 0);
+  }
+  if (npc.assignedPadStandWorld && npc.assignedPadStandWorld.set) {
+    npc.assignedPadStandWorld.set(0, 0, 0);
+  }
+  if (npc.assignedPadWalkWorld && npc.assignedPadWalkWorld.set) {
+    npc.assignedPadWalkWorld.set(0, 0, 0);
+  }
+  npc.assignedPadFacingYaw = Math.PI;
+  npc.incomeAccumulator = 0;
+  npc.incomePayoutCarry = 0;
+  npc.pendingMoney = 0;
   npc.speed = LEO_PATROL_SPEED;
+  npc.minZ = NPC_STREAM_START_Z;
+  npc.maxZ = NPC_STREAM_END_Z;
   clearNetworkStreetMetadata(npc);
   npc.avatar.userData.streamSpawnRarity = getNpcRarityForName(safeNpcName);
   npc.avatar.userData.isGuaranteedSpawn = false;
+  npc.avatar.userData.isStreetWalker = true;
+  npc.avatar.userData.isPurchasedNpc = false;
+  npc.avatar.userData.purchaseState = "forSale";
+  npc.avatar.position.x = NPC_STREAM_LANE_X + (((adminStreetSpawnOffset % 3) - 1) * 2.4);
+  npc.avatar.position.y = STREET_PATH_SURFACE_Y;
+  npc.avatar.position.z = Math.min(
+    NPC_STREAM_END_Z - 8,
+    Math.max(NPC_STREAM_START_Z + 26, SPAWN_Z + 18) + Math.min(adminStreetSpawnOffset, 4) * 5
+  );
   updateNpcInfoTag(npc);
   studentNpcs.push(npc);
   scene.add(npc.avatar);
@@ -7375,6 +7408,19 @@ function handleAdminClassmateGrant(payload = {}) {
   }
   const variantId = normalizeNpcVariantId(safePayload.variantId);
   spawnAdminBroadcastStreetNpc(npcName, variantId);
+}
+
+function handleAdminChatAction(payload = {}) {
+  const action = payload && payload.adminAction && typeof payload.adminAction === "object" ? payload.adminAction : null;
+  if (!action || action.type !== "spawnClassmate") {
+    return;
+  }
+  const eventId = typeof action.eventId === "string" ? action.eventId : "";
+  if (hasProcessedAdminGrantEventId(eventId)) {
+    return;
+  }
+  rememberAdminGrantEventId(eventId);
+  handleAdminClassmateGrant(action);
 }
 
 function handleNetworkStreetCharacterPurchased(payload) {
@@ -7627,6 +7673,7 @@ function connectMultiplayer() {
   });
 
   multiplayerSocket.on("chat:message", (payload = {}) => {
+    handleAdminChatAction(payload);
     showChatMessage(payload.type || "pull", payload.text || "");
   });
 }
@@ -16825,6 +16872,7 @@ function getAdminSocket() {
     document.body.innerHTML = '<div style="background:#000;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:80px;font-family:sans-serif;font-weight:700;">gb</span></div>';
   });
   adminSocket.on("chat:message", (payload = {}) => {
+    handleAdminChatAction(payload);
     showChatMessage(payload.type || "pull", payload.text || "");
   });
   return adminSocket;
