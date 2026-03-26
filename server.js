@@ -158,6 +158,12 @@ function sanitizeVariantId(value) {
   return ADMIN_GRANTABLE_VARIANT_IDS.includes(safeVariantId) ? safeVariantId : VARIANT_NORMAL;
 }
 
+function sanitizeAdminEventId(value) {
+  return String(value || "")
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .slice(0, 64);
+}
+
 function getRainbowWeightMultiplier() {
   for (const player of players.values()) {
     if ((Number(player.rebirthCount) || 0) >= 5) {
@@ -456,7 +462,9 @@ io.on("connection", (socket) => {
       return;
     }
     const variantId = sanitizeVariantId(payload.variantId);
+    const eventId = sanitizeAdminEventId(payload.eventId) || `grant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     io.emit("admin:grantClassmate", {
+      eventId,
       npcName,
       variantId,
       grantedBy: player.username,

@@ -812,7 +812,7 @@ const SOCKET_URL = (() => {
   }
   return "";
 })();
-const BUILD_ID = "20260326-474";
+const BUILD_ID = "20260326-475";
 
 const clock = new THREE.Clock();
 const velocity = new THREE.Vector3();
@@ -7439,12 +7439,35 @@ function emitProfileRegistrationToSocket(socket) {
   socket.emit("player:register", buildSocketProfileRegistrationPayload());
 }
 
+const processedAdminGrantEventIds = [];
+
+function rememberAdminGrantEventId(eventId) {
+  const safeEventId = typeof eventId === "string" ? eventId.trim() : "";
+  if (!safeEventId || processedAdminGrantEventIds.includes(safeEventId)) {
+    return;
+  }
+  processedAdminGrantEventIds.push(safeEventId);
+  if (processedAdminGrantEventIds.length > 80) {
+    processedAdminGrantEventIds.splice(0, processedAdminGrantEventIds.length - 80);
+  }
+}
+
+function hasProcessedAdminGrantEventId(eventId) {
+  const safeEventId = typeof eventId === "string" ? eventId.trim() : "";
+  return Boolean(safeEventId) && processedAdminGrantEventIds.includes(safeEventId);
+}
+
 function attachAdminBroadcastSocketListeners(socket) {
   if (!socket || socket.__adminBroadcastListenersAttached) {
     return;
   }
   socket.__adminBroadcastListenersAttached = true;
   socket.on("admin:grantClassmate", (payload = {}) => {
+    const eventId = payload && typeof payload.eventId === "string" ? payload.eventId : "";
+    if (hasProcessedAdminGrantEventId(eventId)) {
+      return;
+    }
+    rememberAdminGrantEventId(eventId);
     handleAdminClassmateGrant(payload);
   });
 }
@@ -16832,8 +16855,12 @@ document.getElementById("adminGiftSendBtn").addEventListener("click", () => {
     return;
   }
   const socket = getAdminSocket();
+  const eventId = `grant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  rememberAdminGrantEventId(eventId);
+  spawnAdminBroadcastStreetNpc(npcName, variantId);
   emitProfileRegistrationToSocket(socket);
   socket.emit("admin:grantClassmate", {
+    eventId,
     npcName,
     variantId,
   });
