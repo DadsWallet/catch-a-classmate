@@ -16591,6 +16591,9 @@ function showChatMessage(type, text) {
 const ADMIN_NAME = "Adonis";
 
 function isAdmin() {
+  const slot = getActiveSaveSlot();
+  const savedName = slot ? (slot.username || slot.name || "") : "";
+  if (savedName.trim() === ADMIN_NAME) return true;
   const el = nametagInputEl || usernameRequiredInputEl;
   const name = el ? el.value.trim() : "";
   return name === ADMIN_NAME;
@@ -16710,8 +16713,25 @@ document.getElementById("adminSpawnBtn").addEventListener("click", () => {
   const variantId = document.getElementById("adminSpawnVariant").value;
   if (!name) return;
   const npc = createNpcForName(name, { variantId });
-  if (!npc) return;
-  if (!placeNpcOnStreetStream(npc, 0)) return;
+  if (!npc || !npc.avatar || !npc.avatar.userData) return;
+  // Force-place directly, bypassing the gap check so it always works
+  npc.direction = 1;
+  npc.minZ = NPC_STREAM_START_Z;
+  npc.maxZ = NPC_STREAM_END_Z;
+  npc.speed = LEO_PATROL_SPEED;
+  npc.purchaseState = "forSale";
+  npc.assignedBaseIndex = -1;
+  npc.assignedPadIndex = -1;
+  npc.incomeAccumulator = 0;
+  npc.incomePayoutCarry = 0;
+  npc.pendingMoney = 0;
+  npc.avatar.position.x = NPC_STREAM_LANE_X;
+  npc.avatar.position.y = STREET_PATH_SURFACE_Y;
+  npc.avatar.position.z = NPC_STREAM_START_Z;
+  npc.avatar.userData.isStreetWalker = true;
+  npc.avatar.userData.isPurchasedNpc = false;
+  npc.avatar.userData.purchaseState = "forSale";
+  npc.avatar.userData.npcInfoKey = "";
   npc.avatar.userData.streamSpawnRarity = getNpcRarityForName(name);
   npc.avatar.userData.isGuaranteedSpawn = false;
   studentNpcs.push(npc);
