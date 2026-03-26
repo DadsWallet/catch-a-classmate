@@ -126,12 +126,20 @@ const players = new Map();
 const streetCharacters = new Map();
 const scheduleState = new Map();
 let streetCharacterCounter = 1;
+const NORMALIZED_ADMIN_USERNAME = ADMIN_USERNAME.toLowerCase();
 
 function sanitizeUsername(value) {
   return String(value || "")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 20) || "Player";
+}
+
+function isAdminPlayer(player) {
+  if (!player || typeof player.username !== "string") {
+    return false;
+  }
+  return sanitizeUsername(player.username).toLowerCase() === NORMALIZED_ADMIN_USERNAME;
 }
 
 function sanitizePosition(rawPosition) {
@@ -442,7 +450,7 @@ io.on("connection", (socket) => {
 
   socket.on("admin:message", (payload = {}) => {
     const player = players.get(socket.id);
-    if (!player || player.username !== ADMIN_USERNAME) return;
+    if (!isAdminPlayer(player)) return;
     const text = String(payload.text || "").trim().slice(0, 200);
     if (!text) return;
     let adminAction = null;
@@ -472,7 +480,7 @@ io.on("connection", (socket) => {
 
   socket.on("admin:grantClassmate", (payload = {}) => {
     const player = players.get(socket.id);
-    if (!player || player.username !== ADMIN_USERNAME) {
+    if (!isAdminPlayer(player)) {
       return;
     }
     const npcName = sanitizeGrantableCharacterName(payload.npcName);

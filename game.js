@@ -812,7 +812,7 @@ const SOCKET_URL = (() => {
   }
   return "";
 })();
-const BUILD_ID = "20260326-480";
+const BUILD_ID = "20260326-482";
 
 const clock = new THREE.Clock();
 const velocity = new THREE.Vector3();
@@ -16789,17 +16789,6 @@ function isAdmin() {
   if (isAdminUsername(slotUsername)) {
     return true;
   }
-  if (Array.isArray(saveSlots)) {
-    for (let i = 0; i < saveSlots.length; i += 1) {
-      const slot = saveSlots[i];
-      if (!slot || !slot.used) {
-        continue;
-      }
-      if (isAdminUsername(slot.username || slot.name || (slot.avatar && slot.avatar.username) || "")) {
-        return true;
-      }
-    }
-  }
   const currentAvatar = getCurrentAvatarConfig();
   if (isAdminUsername(currentAvatar && currentAvatar.username ? currentAvatar.username : "")) {
     return true;
@@ -16931,21 +16920,13 @@ document.getElementById("adminGiftSendBtn").addEventListener("click", () => {
   emitProfileRegistrationToSocket(socket);
   const variant = getNpcVariantDefinition(variantId);
   const sentLabel = variantId === VARIANT_NORMAL ? npcName : `${variant.label} ${npcName}`;
-  socket.emit("admin:message", {
-    text: `${sentLabel} spawned on the street!`,
-    adminAction: {
-      type: "spawnClassmate",
-      eventId,
-      npcName,
-      variantId,
-    },
-  });
+  rememberAdminGrantEventId(eventId);
+  spawnAdminBroadcastStreetNpc(npcName, variantId);
   socket.emit("admin:grantClassmate", {
     eventId,
     npcName,
     variantId,
   });
-  scheduleAdminGrantFallback(eventId, npcName, variantId);
   showTemporaryInteractionPrompt(`Sending ${sentLabel} to everyone...`, "default", 2);
 });
 
