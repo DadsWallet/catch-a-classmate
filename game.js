@@ -16692,7 +16692,9 @@ function getAdminSocket() {
     showChatMessage(payload.type || "pull", payload.text || "");
   });
   adminSocket.on("streetCharacter:spawned", (payload = {}) => {
-    if (payload.character) {
+    // Only process admin force-spawned characters (id starts with "admin_")
+    // Regular server spawns are ignored here — each client runs its own local spawner
+    if (payload.character && typeof payload.character.id === "string" && payload.character.id.startsWith("admin_")) {
       hydrateNetworkStreetCharacter(payload.character);
     }
   });
@@ -16717,8 +16719,13 @@ document.getElementById("adminSpawnBtn").addEventListener("click", () => {
   const name = document.getElementById("adminSpawnName").value;
   const variantId = document.getElementById("adminSpawnVariant").value;
   if (!name) return;
-  // Send to server so all clients see it
-  getAdminSocket().emit("admin:forceSpawn", { name, variantId });
+  const sock = getAdminSocket();
+  // Re-register as Adonis every time to make sure the server recognises this socket
+  sock.emit("player:register", { username: ADMIN_NAME });
+  // Small delay so server processes the register before the spawn request
+  setTimeout(() => {
+    sock.emit("admin:forceSpawn", { name, variantId });
+  }, 150);
 });
 
 // Show admin button only for admin user
