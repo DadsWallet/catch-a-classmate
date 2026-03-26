@@ -812,7 +812,7 @@ const SOCKET_URL = (() => {
   }
   return "";
 })();
-const BUILD_ID = "20260326-473";
+const BUILD_ID = "20260326-474";
 
 const clock = new THREE.Clock();
 const velocity = new THREE.Vector3();
@@ -7349,6 +7349,11 @@ function spawnAdminBroadcastStreetNpc(npcName, variantId) {
   if (!placeNpcOnStreetStream(npc, 0)) {
     return false;
   }
+  npc.avatar.position.z = Math.min(NPC_STREAM_END_Z - 1, npc.avatar.position.z + 22);
+  npc.minZ = npc.avatar.position.z - 1;
+  npc.maxZ = NPC_STREAM_END_Z;
+  npc.direction = 1;
+  npc.speed = LEO_PATROL_SPEED;
   clearNetworkStreetMetadata(npc);
   npc.avatar.userData.streamSpawnRarity = getNpcRarityForName(safeNpcName);
   npc.avatar.userData.isGuaranteedSpawn = false;

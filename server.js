@@ -462,6 +462,12 @@ io.on("connection", (socket) => {
       grantedBy: player.username,
       timestamp: Date.now(),
     });
+    const variantLabel = variantId === VARIANT_NORMAL ? "" : `${variantId.charAt(0).toUpperCase()}${variantId.slice(1)} `;
+    io.emit("chat:message", {
+      type: "admin",
+      text: `${player.username} spawned ${variantLabel}${npcName} on the street!`,
+      timestamp: Date.now(),
+    });
   });
 
   socket.on("disconnect", () => {
