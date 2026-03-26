@@ -43,10 +43,6 @@ const CHARACTER_POOLS_BY_RARITY = Object.freeze({
   [RARITY_SECRET]: ["Fletcher", "Eshdog Marley"],
 });
 
-const ADMIN_GRANTABLE_CHARACTER_NAMES = Object.freeze(
-  Array.from(new Set(Object.values(CHARACTER_POOLS_BY_RARITY).flat()))
-);
-
 const VARIANT_DEFINITIONS = Object.freeze([
   Object.freeze({ id: VARIANT_NORMAL, chance: 80 }),
   Object.freeze({ id: VARIANT_SHINY, chance: 12 }),
@@ -54,8 +50,6 @@ const VARIANT_DEFINITIONS = Object.freeze([
   Object.freeze({ id: VARIANT_DIAMOND, chance: 2 }),
   Object.freeze({ id: VARIANT_RAINBOW, chance: 1 }),
 ]);
-
-const ADMIN_GRANTABLE_VARIANT_IDS = Object.freeze(VARIANT_DEFINITIONS.map((variant) => variant.id));
 
 const SPAWN_SCHEDULES = Object.freeze({
   common: Object.freeze({
@@ -126,20 +120,12 @@ const players = new Map();
 const streetCharacters = new Map();
 const scheduleState = new Map();
 let streetCharacterCounter = 1;
-const NORMALIZED_ADMIN_USERNAME = ADMIN_USERNAME.toLowerCase();
 
 function sanitizeUsername(value) {
   return String(value || "")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 20) || "Player";
-}
-
-function isAdminPlayer(player) {
-  if (!player || typeof player.username !== "string") {
-    return false;
-  }
-  return sanitizeUsername(player.username).toLowerCase() === NORMALIZED_ADMIN_USERNAME;
 }
 
 function sanitizePosition(rawPosition) {
@@ -154,22 +140,6 @@ function sanitizePosition(rawPosition) {
     z: Number.isFinite(z) ? z : 0,
     rotationY: Number.isFinite(rotationY) ? rotationY : 0,
   };
-}
-
-function sanitizeGrantableCharacterName(value) {
-  const safeName = String(value || "").trim();
-  return ADMIN_GRANTABLE_CHARACTER_NAMES.includes(safeName) ? safeName : "";
-}
-
-function sanitizeVariantId(value) {
-  const safeVariantId = String(value || "").trim().toLowerCase();
-  return ADMIN_GRANTABLE_VARIANT_IDS.includes(safeVariantId) ? safeVariantId : VARIANT_NORMAL;
-}
-
-function sanitizeAdminEventId(value) {
-  return String(value || "")
-    .replace(/[^a-zA-Z0-9_-]/g, "")
-    .slice(0, 64);
 }
 
 function getRainbowWeightMultiplier() {
@@ -450,63 +420,45 @@ io.on("connection", (socket) => {
 
   socket.on("admin:message", (payload = {}) => {
     const player = players.get(socket.id);
-    if (!isAdminPlayer(player)) return;
+    if (!player || player.username !== ADMIN_USERNAME) return;
     const text = String(payload.text || "").trim().slice(0, 200);
     if (!text) return;
-    let adminAction = null;
-    const requestedAction = payload && payload.adminAction && typeof payload.adminAction === "object" ? payload.adminAction : null;
-    if (requestedAction && requestedAction.type === "spawnClassmate") {
-      const npcName = sanitizeGrantableCharacterName(requestedAction.npcName);
-      if (npcName) {
-        const variantId = sanitizeVariantId(requestedAction.variantId);
-        const eventId =
-          sanitizeAdminEventId(requestedAction.eventId) ||
-          `grant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        adminAction = {
-          type: "spawnClassmate",
-          eventId,
-          npcName,
-          variantId,
-        };
-      }
-    }
     io.emit("chat:message", {
       type: "admin",
       text,
-      adminAction,
       timestamp: Date.now(),
     });
   });
 
-  socket.on("admin:grantClassmate", (payload = {}) => {
+  socket.on("admin:forceSpawn", (payload = {}) => {
     const player = players.get(socket.id);
-    if (!isAdminPlayer(player)) {
-      return;
+    if (!player || player.username !== ADMIN_USERNAME) return;
+    const name = String(payload.name || "").trim().slice(0, 40);
+    const variantId = String(payload.variantId || "normal").trim();
+    if (!name) return;
+    // Find rarity for this character name
+    let rarity = RARITY_COMMON;
+    for (const [r, names] of Object.entries(CHARACTER_POOLS_BY_RARITY)) {
+      if (names.includes(name)) { rarity = r; break; }
     }
-    const npcName = sanitizeGrantableCharacterName(payload.npcName);
-    if (!npcName) {
-      return;
-    }
-    const variantId = sanitizeVariantId(payload.variantId);
-    const eventId = sanitizeAdminEventId(payload.eventId) || `grant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    io.emit("admin:grantClassmate", {
-      eventId,
-      npcName,
+    const spawnedAtMs = Date.now();
+    const travelDurationMs = Math.ceil(((NPC_STREAM_END_Z - NPC_STREAM_START_Z) / NPC_PATROL_SPEED) * 1000);
+    const character = {
+      id: `admin_${streetCharacterCounter++}`,
+      name,
+      rarity,
       variantId,
-      grantedBy: player.username,
-      timestamp: Date.now(),
-    });
-    const variantLabel = variantId === VARIANT_NORMAL ? "" : `${variantId.charAt(0).toUpperCase()}${variantId.slice(1)} `;
-    io.emit("chat:message", {
-      type: "admin",
-      text: `${player.username} spawned ${variantLabel}${npcName} on the street!`,
-      adminAction: {
-        type: "spawnClassmate",
-        eventId,
-        npcName,
-        variantId,
-      },
-      timestamp: Date.now(),
+      startX: NPC_STREAM_LANE_X,
+      startZ: NPC_STREAM_START_Z,
+      endZ: NPC_STREAM_END_Z,
+      speed: NPC_PATROL_SPEED,
+      spawnedAtMs,
+      expiresAtMs: spawnedAtMs + travelDurationMs,
+    };
+    streetCharacters.set(character.id, character);
+    io.emit("streetCharacter:spawned", {
+      serverTimeMs: Date.now(),
+      character,
     });
   });
 

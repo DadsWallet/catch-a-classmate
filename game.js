@@ -16691,6 +16691,11 @@ function getAdminSocket() {
   adminSocket.on("chat:message", (payload = {}) => {
     showChatMessage(payload.type || "pull", payload.text || "");
   });
+  adminSocket.on("streetCharacter:spawned", (payload = {}) => {
+    if (payload.character) {
+      hydrateNetworkStreetCharacter(payload.character);
+    }
+  });
   return adminSocket;
 }
 
@@ -16712,30 +16717,8 @@ document.getElementById("adminSpawnBtn").addEventListener("click", () => {
   const name = document.getElementById("adminSpawnName").value;
   const variantId = document.getElementById("adminSpawnVariant").value;
   if (!name) return;
-  const npc = createNpcForName(name, { variantId });
-  if (!npc || !npc.avatar || !npc.avatar.userData) return;
-  // Force-place directly, bypassing the gap check so it always works
-  npc.direction = 1;
-  npc.minZ = NPC_STREAM_START_Z;
-  npc.maxZ = NPC_STREAM_END_Z;
-  npc.speed = LEO_PATROL_SPEED;
-  npc.purchaseState = "forSale";
-  npc.assignedBaseIndex = -1;
-  npc.assignedPadIndex = -1;
-  npc.incomeAccumulator = 0;
-  npc.incomePayoutCarry = 0;
-  npc.pendingMoney = 0;
-  npc.avatar.position.x = NPC_STREAM_LANE_X;
-  npc.avatar.position.y = STREET_PATH_SURFACE_Y;
-  npc.avatar.position.z = NPC_STREAM_START_Z;
-  npc.avatar.userData.isStreetWalker = true;
-  npc.avatar.userData.isPurchasedNpc = false;
-  npc.avatar.userData.purchaseState = "forSale";
-  npc.avatar.userData.npcInfoKey = "";
-  npc.avatar.userData.streamSpawnRarity = getNpcRarityForName(name);
-  npc.avatar.userData.isGuaranteedSpawn = false;
-  studentNpcs.push(npc);
-  scene.add(npc.avatar);
+  // Send to server so all clients see it
+  getAdminSocket().emit("admin:forceSpawn", { name, variantId });
 });
 
 // Show admin button only for admin user
